@@ -299,11 +299,30 @@ def run_trial(model, data, x, y, vx, vy,
     engine_act = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, "descent_engine")
     vz_target_prev = vz_target_profile(SPAWN_HEIGHT, vz_target_override)
 
+    # Thrust cutoff at touchdown (BLOCKING-2, docs/known-issues.md). Without
+    # this, HOVER_THRUST keeps applying m*g feed-forward after contact, so
+    # the settle detector below fires while the engine is still holding up
+    # most of the vehicle's weight — legs never carry their designed static
+    # load and every reported force understates the real one. Apollo cut
+    # off on the contact-probe signal; mirrored here by ramping thrust to
+    # zero over ~0.2 s once >=3 feet register contact, using the previous
+    # step's contact_forces (initialised from the pre-loop state, then kept
+    # current by the post-step recomputation below) so the decision is made
+    # from already-measured state rather than an extra contact query.
+    TOUCHDOWN_RAMP_S = 0.2
+    ramp_steps = max(1, round(TOUCHDOWN_RAMP_S / dt))
+    steps_since_touchdown = None
+    contact_forces = get_contact_forces(model, data)
+
     step = 0
     for step in range(MAX_STEPS):
         # AGL (body height above local terrain) for crash detection.
         tz_here = terrain_z_at(model, data, data.qpos[0], data.qpos[1])
         agl = data.qpos[2] - tz_here
+
+        feet_down_now = sum(1 for f in contact_forces.values() if f > 1.0)
+        if steps_since_touchdown is None and feet_down_now >= 3:
+            steps_since_touchdown = 0
 
         # Foot clearance (min over all 4 feet) drives the descent profile,
         # not body AGL — see foot_clearance() docstring.
@@ -311,6 +330,12 @@ def run_trial(model, data, x, y, vx, vy,
         vz_target = vz_target_profile(clearance, vz_target_override)
         thrust, prev_vz_err = descent_thrust(data.qvel[2], vz_target, prev_vz_err, vz_target_prev, dt)
         vz_target_prev = vz_target
+
+        if steps_since_touchdown is not None:
+            ramp_frac = max(0.0, 1.0 - steps_since_touchdown / ramp_steps)
+            thrust *= ramp_frac
+            steps_since_touchdown += 1
+
         data.ctrl[engine_act] = thrust
 
         mujoco.mj_step(model, data)
