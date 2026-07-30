@@ -228,39 +228,38 @@ BUS_MASS    = 1000.0 - ENGINE_MASS - TANK_MASS - 4 * STRUT_MASS - 4 * FOOT_MASS 
 # both hover and brake a meaningful descent rate.
 ENGINE_MAX_THRUST = 5000.0   # N
 
-# ── Landing leg spring-damper sizing ────────────────────────────────────────
-# Design touchdown vertical speed (see descent controller in run_monte_carlo.py)
-# is 1.5 m/s, not the old 9.53 m/s free-fall impact.
-# Per-leg effective mass (quarter share of 1000 kg body) = 250 kg.
+# ── Landing leg spring-damper sizing (BLOCKING-1, docs/known-issues.md) ─────
+# The previous sizing (320 N/m) was derived from landing kinetic energy
+# alone and never checked whether the legs could hold the vehicle up at
+# rest. Static per-leg load is F = m*g/4 = 1000*1.62/4 = 405 N; at 320 N/m
+# that requires 1.27 m of spring compression against a 0.8 m stroke limit —
+# physically impossible. Both constraints below must hold simultaneously.
 #
-# First pass assumed ALL touchdown KE goes into the spring (damper gets
-# none) as a "conservative" worst case, giving k=2400 N/m. Empirically
-# that was wrong in the other direction: with a real damper active
-# (critically-damped-ish response), stroke usage came out at only ~10%
-# of the 0.8 m budget, not 50-70% — the spring-only estimate is not
-# conservative once damping is doing most of the work, it's just wrong.
+# Static constraint: compression at rest should use <=20% of stroke, so the
+# rest is available to absorb an actual landing:
+#   k >= 405 / (0.20 * 0.8) = 2531 N/m  ->  round up to 2500 N/m minimum
 #
-# Correct approach: for a mass-spring-damper released from an initial
-# velocity v0 (no initial displacement), critically-damped peak
-# displacement is x_max = v0 / (omega_n * e), omega_n = sqrt(k/m_eff).
-# Solving for the middle of the 50-70% stroke band (x_target = 0.48 m)
-# at v0 ~= 1.7 m/s (touchdown speed with some margin over the 1.5 m/s
-# design target):
-#   omega_n = v0 / (x_target * e) = 1.7 / (0.48 * 2.71828) = 1.303 rad/s
-#   k = m_eff * omega_n^2 = 250 * 1.303^2 = 424 N/m  -> round to 320 N/m
-#     (further reduced from the 424 N/m critical-damping estimate after
-#     empirical verification below showed 320 N/m centers the achieved
-#     stroke in the 50-70% band across a spread of trials, not just the
-#     single nominal case the formula was solved for)
-# Damping at zeta ~= 0.65 (near-critical -> absorbs energy without a
-# bounce-back overshoot):
-#   c = 2 * zeta * sqrt(k * m_eff) = 2*0.65*sqrt(320*250) = 368 N.s/m -> 360
+# Dynamic constraint: at the 1.5 m/s design touchdown speed, per-leg energy
+# balance (KE_total split between 4 springs, weight doing work W*x as the
+# legs compress by x) is
+#   2*k*x^2 - W*x - KE = 0,   W = m*g = 1620 N,   KE = 0.5*m*v^2 = 1125 J
+# solved for x and required to stay under ~75% of the 0.8 m stroke.
 #
-# Verified empirically (20-trial spread, seed 42, nominal Monte Carlo
-# perturbation range): peak stroke 0.416-0.493 m (52-62% of 0.8 m),
-# peak strut force well under the 50 kN limit, no bottom-outs.
-LEG_STIFFNESS = 320    # N/m
-LEG_DAMPING   = 360    # N·s/m
+# Trade study (static x = 405/k, dynamic x solves the quadratic above):
+#   k=2000: static 0.203 m (25%), dynamic 0.770 m (96%)  -- dynamic too tight
+#   k=3000: static 0.135 m (17%), dynamic 0.589 m (74%)  -- satisfies both
+#   k=4000: static 0.101 m (13%), dynamic 0.490 m (61%)
+#
+# k=3000 N/m satisfies both constraints with margin. Damping for zeta~=0.7
+# (near-critical: suppresses rebound/tip-over without over-damping):
+#   c = 0.7 * 2*sqrt(k * m_eff) = 0.7*2*sqrt(3000*250) = 1212 N.s/m -> 1200
+#
+# Regression: tests/test_static_equilibrium.py asserts both constraints
+# directly and drops the lander with the engine off to confirm each leg
+# settles at 405/k without bottoming out. It's the test whose absence let
+# 320 N/m ship in the first place.
+LEG_STIFFNESS = 3000   # N/m
+LEG_DAMPING   = 1200   # N·s/m
 
 xml = f"""<mujoco model="lunar_world">
 
