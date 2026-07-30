@@ -12,8 +12,19 @@ stay quiet about a null result.
 Checks:
   1. Signal test    - corr(peak_strut_force, local_slope) and
                        corr(peak_strut_force, elevation), with p-values.
+                       Also reports corr(force, |v_horizontal|) prominently
+                       (drift speed is the leading confound candidate), and
+                       a partial correlation of force~slope controlling for
+                       |v_horizontal| — drift variance may be masking a real
+                       terrain effect that the raw correlation can't see.
+  1b. Failure vs terrain - point-biserial corr(failed, local_slope) plus
+                       failure rate by slope quartile, over ALL trials (not
+                       just the ones that landed safely).
   2. Density-confound test - does the recommended site move if every
-                       force is replaced by a constant?
+                       force is replaced by a constant? Only meaningful once
+                       [1] finds a real signal — reported INCONCLUSIVE, not
+                       PASS/FAIL, when it doesn't (a large distance between
+                       two noise fields isn't evidence of anything).
   3. Bootstrap      - resample trials 1000x with replacement; how much
                        does the recommended coordinate move?
   4. Bottom-out assertion - hard fail if any trial's peak leg stroke
@@ -26,22 +37,17 @@ import math
 import sys
 import json
 import numpy as np
-from scipy.ndimage import gaussian_filter
 from scipy import stats
 
 from lunar_lander.paths import RESULTS_CSV as CSV_PATH, VALIDATION_STATS as STATS_OUT_PATH
+from lunar_lander.site_selection import recommended_site
 
 STROKE_LIMIT_M = 0.8
-GRID_MARGIN = 15.0
-DOMAIN_MIN, DOMAIN_MAX = GRID_MARGIN, 127.0 - GRID_MARGIN
 GRID = 128
 
 SIGNAL_R_THRESHOLD = 0.2
 DENSITY_CONFOUND_THRESHOLD_M = 5.0
 BOOTSTRAP_SPREAD_THRESHOLD_M = 15.0
-MIN_EFFECTIVE_SAMPLES = 5.0
-SIGMA_CELLS = 8
-KERNEL_RES = 200
 
 
 # ── Terrain heightmap (duplicated from generate_world.py's layered_noise) ───
@@ -101,40 +107,16 @@ def load_rows():
         return list(csv.DictReader(f))
 
 
-def recommended_site(xs, ys, forces, x_min=DOMAIN_MIN, x_max=DOMAIN_MAX,
-                      y_min=DOMAIN_MIN, y_max=DOMAIN_MAX, res=KERNEL_RES,
-                      sigma_cells=SIGMA_CELLS, min_eff=MIN_EFFECTIVE_SAMPLES):
-    """
-    Same Nadaraya-Watson kernel-regression site selection as
-    plot_landing_zones.py, factored out here so it can be re-run cheaply
-    (no matplotlib) for the density-confound test and the bootstrap.
-    Returns (opt_x, opt_y) or (None, None) if no cell has enough samples.
-    """
-    xi = np.linspace(x_min, x_max, res)
-    yi = np.linspace(y_min, y_max, res)
-    force_sum = np.zeros((res, res))
-    count = np.zeros((res, res))
-    for x, y, f in zip(xs, ys, forces):
-        ix = int((x - x_min) / (x_max - x_min) * (res - 1))
-        iy = int((y - y_min) / (y_max - y_min) * (res - 1))
-        if 0 <= ix < res and 0 <= iy < res:
-            force_sum[iy, ix] += f
-            count[iy, ix] += 1
-
-    smoothed_sum = gaussian_filter(force_sum, sigma=sigma_cells)
-    smoothed_count = gaussian_filter(count, sigma=sigma_cells)
-    with np.errstate(invalid="ignore", divide="ignore"):
-        force_field = smoothed_sum / smoothed_count
-
-    kernel_norm = 2 * math.pi * sigma_cells ** 2
-    effective_n = smoothed_count * kernel_norm
-    valid = effective_n >= min_eff
-    if not np.any(valid):
-        return None, None
-
-    masked = np.where(valid, force_field, np.inf)
-    iy, ix = np.unravel_index(np.argmin(masked), masked.shape)
-    return xi[ix], yi[iy]
+def partial_corr(x, y, controlling_for):
+    """Partial correlation of x and y, controlling for z, via the standard
+    residual method: regress x on z and y on z (simple OLS), then correlate
+    what's left over. If z explains away what looked like an x~y
+    relationship (or reveals one that raw correlation couldn't see because
+    z's variance was swamping it), that shows up here."""
+    z = controlling_for
+    x_resid = x - np.polyval(np.polyfit(z, x, 1), z)
+    y_resid = y - np.polyval(np.polyfit(z, y, 1), z)
+    return stats.pearsonr(x_resid, y_resid)
 
 
 def main():
@@ -169,22 +151,30 @@ def main():
     print(f"    Failure reasons: {dict(reason_counts)}")
     print(f"    Overall failure rate: {failure_rate:.1f}%")
 
+    H, slope_deg = load_terrain()
+
     # ── Safe-landing data for site selection / signal tests ──────────────
     safe_rows = [r for r in rows if r["outcome"] == "landed" and r["tipped"] == "0"]
     xs = np.array([float(r["x"]) for r in safe_rows])
     ys = np.array([float(r["y"]) for r in safe_rows])
     forces = np.array([float(r["peak_strut_force_N"]) for r in safe_rows])
+    v_horiz = np.hypot(
+        np.array([float(r["vx"]) for r in safe_rows]),
+        np.array([float(r["vy"]) for r in safe_rows]),
+    )
 
-    H, slope_deg = load_terrain()
     slopes_at = np.array([sample_grid(slope_deg, x, y) for x, y in zip(xs, ys)])
     elevs_at = np.array([sample_grid(H, x, y) for x, y in zip(xs, ys)])
 
     # ── 1. Signal test ────────────────────────────────────────────────────
     r_slope, p_slope = stats.pearsonr(forces, slopes_at)
     r_elev, p_elev = stats.pearsonr(forces, elevs_at)
-    print(f"\n[1] Signal test:")
-    print(f"    corr(peak_strut_force, local_slope)     r={r_slope:+.4f}  p={p_slope:.4g}")
-    print(f"    corr(peak_strut_force, elevation)        r={r_elev:+.4f}  p={p_elev:.4g}")
+    r_drift, p_drift = stats.pearsonr(forces, v_horiz)
+    print("\n[1] Signal test:")
+    print(f"    corr(peak_strut_force, local_slope)      r={r_slope:+.4f}  p={p_slope:.4g}")
+    print(f"    corr(peak_strut_force, elevation)         r={r_elev:+.4f}  p={p_elev:.4g}")
+    print(f"    corr(peak_strut_force, |v_horizontal|)    r={r_drift:+.4f}  p={p_drift:.4g}"
+          f"  <- reported prominently: this is the leading confound candidate")
     signal_ok = abs(r_slope) >= SIGNAL_R_THRESHOLD and p_slope < 0.05
     if not signal_ok:
         print(f"  WARNING: |r|={abs(r_slope):.3f} < {SIGNAL_R_THRESHOLD} threshold "
@@ -196,8 +186,64 @@ def main():
     else:
         print("  PASS: force carries a statistically significant relationship "
               "with local terrain slope.")
+    if abs(r_drift) > abs(r_slope):
+        print(f"  NOTE: |corr(force, |v|)|={abs(r_drift):.3f} exceeds "
+              f"|corr(force, slope)|={abs(r_slope):.3f} — on this run the "
+              f"simulation is measuring approach conditions (how fast you "
+              f"were drifting), not site quality.")
+
+    # Partial correlation of force~slope controlling for |v_horizontal|.
+    # Run regardless of whether the raw correlation is flat — drift variance
+    # may be masking a real terrain effect that only shows up once removed.
+    r_partial, p_partial = partial_corr(forces, slopes_at, v_horiz)
+    print("\n[1a] Partial correlation (force ~ slope, controlling for |v_horizontal|):")
+    print(f"    r={r_partial:+.4f}  p={p_partial:.4g}")
+    partial_signal_ok = abs(r_partial) >= SIGNAL_R_THRESHOLD and p_partial < 0.05
+    if partial_signal_ok and not signal_ok:
+        print("  NOTE: a terrain signal appears once drift speed is controlled "
+              "for, even though the raw correlation is flat. Drift variance "
+              "was masking a real slope effect.")
+    elif not partial_signal_ok:
+        print("  No signal recovered after controlling for drift speed either.")
+    else:
+        print("  (Raw signal test already passed; partial correlation is "
+              "reported for completeness.)")
+
+    # ── 1b. Failure vs terrain, over ALL trials (not just safe landings) ──
+    all_xs = np.array([float(r["x"]) for r in rows])
+    all_ys = np.array([float(r["y"]) for r in rows])
+    all_slopes = np.array([sample_grid(slope_deg, x, y) for x, y in zip(all_xs, all_ys)])
+    failed = np.array([0.0 if r["outcome"] == "landed" and r["tipped"] == "0" else 1.0
+                        for r in rows])
+    r_pb, p_pb = stats.pointbiserialr(failed, all_slopes)
+    print("\n[1b] Failure vs terrain (all trials):")
+    print(f"    corr(failed, local_slope)  r={r_pb:+.4f}  p={p_pb:.4g}")
+
+    quartile_edges = np.percentile(all_slopes, [25, 50, 75])
+    quartile_idx = np.digitize(all_slopes, quartile_edges)
+    quartile_failure_rates = []
+    for q in range(4):
+        mask = quartile_idx == q
+        if mask.sum() > 0:
+            lo = all_slopes[mask].min()
+            hi = all_slopes[mask].max()
+            rate = 100 * failed[mask].mean()
+            quartile_failure_rates.append(rate)
+            print(f"    slope {lo:5.1f}-{hi:5.1f} deg (n={mask.sum():3d}): "
+                  f"failure rate {rate:5.1f}%")
+        else:
+            quartile_failure_rates.append(None)
+    failure_terrain_signal_ok = abs(r_pb) >= SIGNAL_R_THRESHOLD and p_pb < 0.05
+    if not failure_terrain_signal_ok:
+        print("  No significant relationship between failure and terrain slope.")
+    else:
+        print("  PASS: failure rate carries a statistically significant "
+              "relationship with local terrain slope.")
 
     # ── 2. Density-confound test ─────────────────────────────────────────
+    # Only meaningful once [1] finds a real signal — otherwise this compares
+    # two maps that are both noise, and a large distance between them proves
+    # nothing about either one being meaningful.
     real_x, real_y = recommended_site(xs, ys, forces)
     const_x, const_y = recommended_site(xs, ys, np.ones_like(forces))
     if real_x is None or const_x is None:
@@ -205,23 +251,34 @@ def main():
               "samples anywhere in the domain to select a site at all).")
         confound_dist = None
         confound_ok = False
+        confound_verdict = "SKIPPED"
     else:
         confound_dist = math.hypot(real_x - const_x, real_y - const_y)
-        print(f"\n[2] Density-confound test:")
+        print("\n[2] Density-confound test:")
         print(f"    Recommended site (real forces):     ({real_x:.2f}, {real_y:.2f})")
         print(f"    Recommended site (constant force):  ({const_x:.2f}, {const_y:.2f})")
         print(f"    Distance moved: {confound_dist:.2f} m")
-        confound_ok = confound_dist >= DENSITY_CONFOUND_THRESHOLD_M
-        if not confound_ok:
-            print(f"  WARNING: moved less than {DENSITY_CONFOUND_THRESHOLD_M} m — "
-                  f"the recommended site is still substantially DENSITY-driven, "
-                  f"not force-driven. Where trials happened to cluster is doing "
-                  f"most of the work, not where they landed gently.")
+        if not signal_ok:
+            confound_ok = False
+            confound_verdict = "INCONCLUSIVE"
+            print("  INCONCLUSIVE: the signal test above failed, so there is no "
+                  "real force-vs-terrain relationship for this test to confound "
+                  "in the first place. A large distance between two noise "
+                  "fields is not evidence of anything; this check only means "
+                  "something once [1] passes.")
         else:
-            print("  PASS: recommended site is not just reproducing trial density.")
+            confound_ok = confound_dist >= DENSITY_CONFOUND_THRESHOLD_M
+            confound_verdict = "PASS" if confound_ok else "FAIL"
+            if not confound_ok:
+                print(f"  WARNING: moved less than {DENSITY_CONFOUND_THRESHOLD_M} m — "
+                      f"the recommended site is still substantially DENSITY-driven, "
+                      f"not force-driven. Where trials happened to cluster is doing "
+                      f"most of the work, not where they landed gently.")
+            else:
+                print("  PASS: recommended site is not just reproducing trial density.")
 
     # ── 3. Bootstrap stability ───────────────────────────────────────────
-    print(f"\n[3] Bootstrap (1000 resamples with replacement):")
+    print("\n[3] Bootstrap (1000 resamples with replacement):")
     rng = np.random.default_rng(42)
     n = len(xs)
     boot_x, boot_y = [], []
@@ -271,11 +328,21 @@ def main():
         corr_force_slope_p=float(p_slope),
         corr_force_elevation_r=float(r_elev),
         corr_force_elevation_p=float(p_elev),
+        corr_force_drift_r=float(r_drift),
+        corr_force_drift_p=float(p_drift),
+        partial_corr_force_slope_given_drift_r=float(r_partial),
+        partial_corr_force_slope_given_drift_p=float(p_partial),
+        partial_signal_ok=bool(partial_signal_ok),
+        corr_failed_slope_r=float(r_pb),
+        corr_failed_slope_p=float(p_pb),
+        failure_rate_by_slope_quartile_pct=quartile_failure_rates,
+        failure_terrain_signal_ok=bool(failure_terrain_signal_ok),
         signal_ok=bool(signal_ok),
         recommended_site_x=float(real_x) if real_x is not None else None,
         recommended_site_y=float(real_y) if real_y is not None else None,
         density_confound_distance_m=confound_dist,
         density_confound_ok=confound_ok,
+        density_confound_verdict=confound_verdict,
         bootstrap_spread_95pct_m=bootstrap_spread,
         bootstrap_ok=bootstrap_ok,
         overall_ok=bool(overall_ok),
@@ -290,9 +357,19 @@ def main():
         corr_force_slope_p=out["corr_force_slope_p"],
         corr_force_elevation_r=out["corr_force_elevation_r"],
         corr_force_elevation_p=out["corr_force_elevation_p"],
+        corr_force_drift_r=out["corr_force_drift_r"],
+        corr_force_drift_p=out["corr_force_drift_p"],
+        partial_corr_force_slope_given_drift_r=out["partial_corr_force_slope_given_drift_r"],
+        partial_corr_force_slope_given_drift_p=out["partial_corr_force_slope_given_drift_p"],
+        partial_signal_ok=out["partial_signal_ok"],
+        corr_failed_slope_r=out["corr_failed_slope_r"],
+        corr_failed_slope_p=out["corr_failed_slope_p"],
+        failure_rate_by_slope_quartile_pct=out["failure_rate_by_slope_quartile_pct"],
+        failure_terrain_signal_ok=out["failure_terrain_signal_ok"],
         signal_ok=out["signal_ok"],
         density_confound_distance_m=out["density_confound_distance_m"],
         density_confound_ok=out["density_confound_ok"],
+        density_confound_verdict=out["density_confound_verdict"],
         bootstrap_spread_95pct_m=out["bootstrap_spread_95pct_m"],
         bootstrap_ok=out["bootstrap_ok"],
         n_bottomed_out=out["n_bottomed_out"],

@@ -23,9 +23,9 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 from matplotlib.patches import Circle
-from scipy.ndimage import gaussian_filter
 
 from lunar_lander.paths import RESULTS_CSV as CSV_PATH, LANDING_ZONES_PNG as OUT_PATH
+from lunar_lander.site_selection import kernel_regression_field, recommended_site
 
 # ── Load data ────────────────────────────────────────────────────────────────
 
@@ -54,69 +54,37 @@ uy = np.array([r["y"] for r in unsafe]) if unsafe else np.array([])
 # GRID_MARGIN=15 in run_monte_carlo.py confines spawns to [15, 112] on a
 # 0-127 m terrain -> the analysis domain is 97x97 m, not the full
 # 127x127 m terrain. Label this correctly rather than implying full
-# coverage.
+# coverage. Site-selection procedure (kernel_regression_field /
+# recommended_site) lives in lunar_lander.site_selection, shared with
+# validate_results.py so both scripts agree on what "recommended site"
+# and "density confound" mean (docs/known-issues.md MINOR-1: they used
+# to disagree, 98.58 m vs 11.72 m, because they compared against
+# different things — a constant-force argmin here now, not a pure-density
+# argmax, matching validate_results.py's definition).
 GRID_RES = 200
 x_min, x_max = 15.0, 112.0   # terrain spawn bounds (GRID_MARGIN to 127-GRID_MARGIN)
 y_min, y_max = 15.0, 112.0
 DOMAIN_SIDE_M = x_max - x_min   # 97 m
-
-xi = np.linspace(x_min, x_max, GRID_RES)
-yi = np.linspace(y_min, y_max, GRID_RES)
 CELL_SIZE_M = (x_max - x_min) / (GRID_RES - 1)
-
-force_sum = np.zeros((GRID_RES, GRID_RES))
-count     = np.zeros((GRID_RES, GRID_RES))
-
-for x, y, f in zip(sx, sy, sf):
-    ix = int((x - x_min) / (x_max - x_min) * (GRID_RES - 1))
-    iy = int((y - y_min) / (y_max - y_min) * (GRID_RES - 1))
-    if 0 <= ix < GRID_RES and 0 <= iy < GRID_RES:
-        force_sum[iy, ix] += f
-        count[iy, ix] += 1
-
-# sigma=8 grid cells -> metres, corrected from the deck's previously-quoted
-# 4.6 m (that number didn't account for the grid being cells, not metres).
 SIGMA_CELLS = 8
 SIGMA_M = SIGMA_CELLS * CELL_SIZE_M
-
-smoothed_sum   = gaussian_filter(force_sum, sigma=SIGMA_CELLS)
-smoothed_count = gaussian_filter(count, sigma=SIGMA_CELLS)
-
-# Nadaraya-Watson estimate: local weighted MEAN force, not accumulated sum.
-# This ratio is correct and normalization-agnostic regardless of how
-# gaussian_filter scales its kernel, since the same kernel appears in
-# both numerator and denominator.
-with np.errstate(invalid="ignore", divide="ignore"):
-    force_field = smoothed_sum / smoothed_count
-
-# scipy.ndimage.gaussian_filter uses a kernel normalized to sum to 1 in
-# discrete (pixel) space -> smoothed_count is a KDE-style density, NOT a
-# raw sample count (an isolated point produces a peak of only
-# ~1/(2*pi*sigma_cells^2), not 1). Comparing that directly to "5 samples"
-# would mask out nearly everything. Undo the kernel normalization to
-# recover an effective raw sample count before applying the threshold.
-KERNEL_NORM = 2 * math.pi * SIGMA_CELLS**2
-effective_n = smoothed_count * KERNEL_NORM
-
-# Require ~5 effective samples so sparse corners can't win by chance density alone.
 MIN_EFFECTIVE_SAMPLES = 5.0
-valid_mask = effective_n >= MIN_EFFECTIVE_SAMPLES
 
-masked_field = np.where(valid_mask, force_field, np.inf)
+field_kwargs = dict(x_min=x_min, x_max=x_max, y_min=y_min, y_max=y_max,
+                     res=GRID_RES, sigma_cells=SIGMA_CELLS,
+                     min_eff=MIN_EFFECTIVE_SAMPLES)
 
-# Recommended site = MINIMUM local mean force (safest), not the argmax of
-# an accumulated score. Density can no longer drive the result: adding
-# more mediocre trials to a cell moves its local MEAN toward the mean of
-# what was added, not upward without bound.
+xi, yi, force_field, valid_mask = kernel_regression_field(sx, sy, sf, **field_kwargs)
+
 if not np.any(valid_mask):
     raise RuntimeError("No grid cell reached the minimum effective sample "
                         "count; site selection is not meaningful with this "
                         "few trials.")
-peak_flat = np.argmin(masked_field)
-peak_iy, peak_ix = np.unravel_index(peak_flat, masked_field.shape)
-opt_x = xi[peak_ix]
-opt_y = yi[peak_iy]
-opt_local_force = force_field[peak_iy, peak_ix]
+
+opt_x, opt_y = recommended_site(sx, sy, sf, **field_kwargs)
+opt_ix = int(round((opt_x - x_min) / (x_max - x_min) * (GRID_RES - 1)))
+opt_iy = int(round((opt_y - y_min) / (y_max - y_min) * (GRID_RES - 1)))
+opt_local_force = force_field[opt_iy, opt_ix]
 
 # For the display heatmap, show the (masked) local mean force field.
 display_field = np.where(valid_mask, force_field, np.nan)
@@ -128,16 +96,12 @@ cluster_radius = 12.0
 mean_cluster_force = (sum(f for _, _, f in cluster_pts) / len(cluster_pts)
                       if cluster_pts else 0.0)
 
-# ── Density-confound check (Phase 4 validation reuses this logic, kept
-#    here too so the printed summary is self-contained) ─────────────────────
-const_force_sum = gaussian_filter(count.astype(float), sigma=SIGMA_CELLS)  # constant "force"=1 per trial
-# argmin of a constant field is undefined/degenerate; the meaningful
-# density-only comparison is against a PURE density argmax, computed here
-# for the printed diff. See validate_results.py for the full test.
-density_masked = np.where(valid_mask, smoothed_count, -np.inf)
-dpeak_iy, dpeak_ix = np.unravel_index(np.argmax(density_masked), density_masked.shape)
-density_x, density_y = xi[dpeak_ix], yi[dpeak_iy]
-density_confound_dist_m = math.hypot(opt_x - density_x, opt_y - density_y)
+# ── Density-confound check (same constant-force-argmin definition as
+#    validate_results.py; Phase 4 validation is the authoritative check,
+#    this is kept here too so the printed summary is self-contained) ────────
+const_x, const_y = recommended_site(sx, sy, np.ones_like(sf), **field_kwargs)
+density_confound_dist_m = (math.hypot(opt_x - const_x, opt_y - const_y)
+                            if const_x is not None else None)
 
 # ── Plot ──────────────────────────────────────────────────────────────────────
 
@@ -258,8 +222,8 @@ print(f"sigma = {SIGMA_CELLS} cells = {SIGMA_M:.3f} m")
 print(f"Domain: [{x_min}, {x_max}] x [{y_min}, {y_max}] = "
       f"{DOMAIN_SIDE_M:.0f}x{DOMAIN_SIDE_M:.0f} m (not the full 127x127 m terrain)")
 print(f"Density-confound check: recommended site moves "
-      f"{density_confound_dist_m:.2f} m if force is ignored entirely "
-      f"(pure-density argmax at ({density_x:.1f}, {density_y:.1f}))")
+      f"{density_confound_dist_m:.2f} m if every force is replaced by a "
+      f"constant (constant-force site at ({const_x:.1f}, {const_y:.1f}))")
 
 # ── Export for summary_stats.json / verify_deck.py ──────────────────────────
 SITE_SELECTION_STATS = dict(
@@ -275,7 +239,8 @@ SITE_SELECTION_STATS = dict(
     domain_max_m=x_max,
     domain_side_m=DOMAIN_SIDE_M,
     min_effective_samples=MIN_EFFECTIVE_SAMPLES,
-    density_confound_distance_m=float(density_confound_dist_m),
+    density_confound_distance_m=(float(density_confound_dist_m)
+                                  if density_confound_dist_m is not None else None),
     n_safe_landings=len(safe),
     n_unsafe=len(unsafe),
     force_min_N=float(sf.min()),
