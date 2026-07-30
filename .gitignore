@@ -1,0 +1,48 @@
+# ── NASA imagery: 1.9 GB, regenerate with scripts/download_lunar.py ──
+lunar_images/
+*.IMG
+*.LBL
+
+# ── COLMAP workspace: regenerate, or see docs/colmap-failure.md ──
+colmap_workspace/
+*.db
+
+# ── Generated simulation artifacts ──
+# Terrain mesh + heightfield are produced by generate_world.py
+physics_mesh/
+results.csv
+results_*.csv
+*_stats.json
+figures/*.png
+!figures/.gitkeep
+
+# ── 3DGS / nerfstudio outputs ──
+3dgs_output/
+*.ply
+training_frames/
+raw_video/
+
+# ── Presentations / large binaries ──
+*.pptx
+*.mp4
+*.MOV
+~$*
+
+# ── Python ──
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# ── OS / editor ──
+.DS_Store
+.idea/
+.vscode/
+*.swp

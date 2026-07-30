@@ -1,0 +1,57 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lunar-landing-analysis"
+version = "0.2.0"
+description = "MuJoCo Monte Carlo pipeline for lunar landing site selection, with a validation suite that checks whether the result means anything"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Kenneth Zhou" }]
+keywords = ["mujoco", "lunar", "simulation", "monte-carlo", "robotics", "nasa"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3.11",
+  "Topic :: Scientific/Engineering :: Physics",
+]
+
+dependencies = [
+  "mujoco>=3.1",
+  "numpy>=1.24",
+  "scipy>=1.10",
+  "matplotlib>=3.7",
+  "pillow>=10.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.4", "pytest-cov>=4.1", "ruff>=0.4"]
+imagery = ["opencv-python-headless", "imageio"]
+
+[project.scripts]
+lunar-generate = "lunar_lander.generate_world:main"
+lunar-simulate = "lunar_lander.run_monte_carlo:main"
+lunar-plot     = "lunar_lander.plot_landing_zones:main"
+lunar-validate = "lunar_lander.validate_results:main"
+
+[project.urls]
+Homepage = "https://github.com/kkennethzhou/lunar-landing-analysis"
+Issues   = "https://github.com/kkennethzhou/lunar-landing-analysis/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --strict-markers"
