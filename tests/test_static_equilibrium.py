@@ -13,13 +13,12 @@ existed before the campaign ran.
 """
 
 import math
-from pathlib import Path
 
 import mujoco
 import numpy as np
 import pytest
 
-XML_PATH = Path(__file__).resolve().parents[1] / "physics_mesh" / ".." / "lunar_world.xml"
+from lunar_lander.paths import XML_PATH
 
 LANDER_MASS_KG = 1000.0
 LUNAR_GRAVITY = 1.62
@@ -49,6 +48,28 @@ def _leg_damping(model) -> float:
 # ── Mass and gravity ─────────────────────────────────────────────────────────
 
 
+def _lander_subtree_mass(model) -> float:
+    """Mass of lander_base + its legs, excluding the static terrain body.
+
+    The terrain hfield geom has no explicit density override, so MuJoCo
+    assigns it a geometry-derived mass many orders of magnitude larger than
+    the lander (tens of millions of kg) — model.body_mass.sum() over the
+    WHOLE model includes that and is never close to 1000 kg. Mirrors the
+    subtree filter generate_world.py itself asserts against at generation
+    time.
+    """
+    root_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "lander_base")
+    ids = [root_id]
+    for bid in range(model.nbody):
+        parent = bid
+        while parent != 0:
+            parent = model.body_parentid[parent]
+            if parent == root_id:
+                ids.append(bid)
+                break
+    return float(model.body_mass[sorted(set(ids))].sum())
+
+
 def test_total_mass_is_exactly_1000kg():
     """Every document claims 1,000 kg. The model must agree.
 
@@ -56,7 +77,7 @@ def test_total_mass_is_exactly_1000kg():
     bus/engine/tank geom masses, giving 960 kg while all reporting said 1,000.
     """
     model = _require_model()
-    total = float(model.body_mass.sum())
+    total = _lander_subtree_mass(model)
     assert total == pytest.approx(1000.0, abs=0.5), (
         f"Model mass is {total:.1f} kg, not 1000 kg. If a body carries an "
         f"explicit <inertial> element, it overrides geom-derived mass."
@@ -75,10 +96,22 @@ def test_inertia_is_derived_not_handpicked():
 
     Regression: diaginertia="300 300 150" was hand-specified, with Izz set
     5x below its correct value, making the lander far too easy to tip.
+
+    model.body_inertia stores principal moments in eigenvalue order, not
+    literally (xx, yy, zz) in the body frame (body_iquat gives the rotation
+    into that principal frame, and it's generally not the identity) — so we
+    can't just unpack the array positionally. The lander is symmetric about
+    its z-axis (four legs at symmetric corners, tank/engine on the z-axis),
+    so Ixx == Iyy by construction; identify them as whichever two of the
+    three eigenvalues are closest together, leaving Izz as the outlier.
     """
     model = _require_model()
     bid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "lander_base")
-    ixx, iyy, izz = model.body_inertia[bid]
+    inertias = list(model.body_inertia[bid])
+    pairs = [(0, 1), (0, 2), (1, 2)]
+    i, j = min(pairs, key=lambda p: abs(inertias[p[0]] - inertias[p[1]]))
+    k = ({0, 1, 2} - {i, j}).pop()
+    ixx, iyy, izz = inertias[i], inertias[j], inertias[k]
     assert izz > ixx, (
         f"Izz ({izz:.1f}) should exceed Ixx ({ixx:.1f}) for a flat, wide bus. "
         f"A hand-picked diaginertia is likely overriding derived inertia."
@@ -231,7 +264,7 @@ def test_engine_actuator_exists():
 if __name__ == "__main__":
     m = _require_model()
     k, c = _leg_stiffness(m), _leg_damping(m)
-    print(f"mass         {m.body_mass.sum():.1f} kg")
+    print(f"mass         {_lander_subtree_mass(m):.1f} kg")
     print(f"stiffness    {k:.0f} N/m")
     print(f"damping      {c:.0f} N*s/m")
     print(f"static x     {STATIC_LOAD_PER_LEG_N / k:.3f} m "

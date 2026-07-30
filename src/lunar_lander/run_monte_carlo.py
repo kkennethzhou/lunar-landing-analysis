@@ -12,14 +12,12 @@ Each trial:
     (raw, for comparison), peak stroke, peak accel, outcome, failure reason
 """
 
-import os
 import csv
 import math
 import numpy as np
 import mujoco
 
-XML_PATH   = os.path.join(os.path.dirname(__file__), "lunar_world.xml")
-CSV_PATH   = os.path.join(os.path.dirname(__file__), "results.csv")
+from lunar_lander.paths import XML_PATH, RESULTS_CSV as CSV_PATH
 
 N_TRIALS     = 500
 MAX_STEPS    = 12000       # 12000 x 0.002 s = 24 s max per trial
@@ -415,7 +413,7 @@ def run_trial(model, data, x, y, vx, vy,
 
 if __name__ == "__main__":
     print(f"Loading model: {XML_PATH}")
-    model = mujoco.MjModel.from_xml_path(XML_PATH)
+    model = mujoco.MjModel.from_xml_path(str(XML_PATH))
     data  = mujoco.MjData(model)
 
     fieldnames = ["trial", "x", "y", "vx", "vy",
@@ -526,7 +524,7 @@ if __name__ == "__main__":
 ╚══════════════════════════════════════════════════╝
 """)
 
-    from summary_stats import merge_summary_stats
+    from lunar_lander.summary_stats import merge_summary_stats
     merge_summary_stats(dict(
         n_trials=N_TRIALS,
         outcome_counts=outcomes_count,

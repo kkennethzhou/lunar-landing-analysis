@@ -17,7 +17,6 @@ chance, and the recommended site is the ARGMIN of local mean force
 
 import csv
 import math
-import os
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
@@ -26,8 +25,7 @@ import matplotlib.colors as mcolors
 from matplotlib.patches import Circle
 from scipy.ndimage import gaussian_filter
 
-CSV_PATH = os.path.join(os.path.dirname(__file__), "results.csv")
-OUT_PATH = os.path.join(os.path.dirname(__file__), "optimal_landing_zones.png")
+from lunar_lander.paths import RESULTS_CSV as CSV_PATH, LANDING_ZONES_PNG as OUT_PATH
 
 # ── Load data ────────────────────────────────────────────────────────────────
 
@@ -287,11 +285,11 @@ SITE_SELECTION_STATS = dict(
 
 if __name__ == "__main__":
     import json
-    stats_path = os.path.join(os.path.dirname(__file__), "site_selection_stats.json")
-    with open(stats_path, "w") as f:
+    from lunar_lander.paths import SITE_SELECTION_STATS as SITE_SELECTION_STATS_PATH
+    with open(SITE_SELECTION_STATS_PATH, "w") as f:
         json.dump(SITE_SELECTION_STATS, f, indent=2)
-    print(f"Saved site-selection stats: {stats_path}")
+    print(f"Saved site-selection stats: {SITE_SELECTION_STATS_PATH}")
 
-    from summary_stats import merge_summary_stats
+    from lunar_lander.summary_stats import merge_summary_stats
     merge_summary_stats(SITE_SELECTION_STATS)
     print("Merged into summary_stats.json")

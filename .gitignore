@@ -8,7 +8,9 @@ colmap_workspace/
 *.db
 
 # ── Generated simulation artifacts ──
-# Terrain mesh + heightfield are produced by generate_world.py
+# Centralised under output/ (see src/lunar_lander/paths.py); patterns kept
+# for older layouts / LUNAR_OUTPUT_DIR overrides pointing elsewhere.
+output/
 physics_mesh/
 results.csv
 results_*.csv
@@ -46,3 +48,9 @@ htmlcov/
 .idea/
 .vscode/
 *.swp
+.claude/
+
+# Local working notes, not part of the published project
+NEXT_PROMPT.md
+PUSH_GUIDE.md
+PUSH_CHECKLIST.md

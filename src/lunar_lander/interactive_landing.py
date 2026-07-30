@@ -8,7 +8,6 @@ Flight modes
   2. Unstable Stress Test — extreme tumble + cross-drift injected automatically
 """
 
-import os
 import sys
 import math
 import time
@@ -16,10 +15,7 @@ import numpy as np
 import mujoco
 import mujoco.viewer
 
-# ── Paths ─────────────────────────────────────────────────────────────────────
-
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-XML_PATH   = os.path.join(SCRIPT_DIR, "lunar_world.xml")
+from lunar_lander.paths import XML_PATH
 
 # ── Physics constants ─────────────────────────────────────────────────────────
 
@@ -432,7 +428,7 @@ def run_session(model, data, rng: np.random.Generator):
 if __name__ == "__main__":
     print(f"\n{DIM}Loading model: {XML_PATH}{RST}")
     try:
-        model = mujoco.MjModel.from_xml_path(XML_PATH)
+        model = mujoco.MjModel.from_xml_path(str(XML_PATH))
         data  = mujoco.MjData(model)
     except Exception as e:
         print(f"{R}Failed to load model: {e}{RST}")

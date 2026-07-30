@@ -7,14 +7,13 @@ pipeline can be re-run stage by stage without losing earlier results.
 """
 
 import json
-import os
 
-SUMMARY_PATH = os.path.join(os.path.dirname(__file__), "summary_stats.json")
+from lunar_lander.paths import SUMMARY_STATS as SUMMARY_PATH
 
 
-def merge_summary_stats(new_data: dict, path: str = SUMMARY_PATH) -> dict:
+def merge_summary_stats(new_data: dict, path=SUMMARY_PATH) -> dict:
     existing = {}
-    if os.path.exists(path):
+    if path.exists():
         with open(path) as f:
             existing = json.load(f)
     existing.update(new_data)

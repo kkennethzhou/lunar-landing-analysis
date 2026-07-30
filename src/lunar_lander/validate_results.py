@@ -23,15 +23,13 @@ Checks:
 
 import csv
 import math
-import os
 import sys
 import json
 import numpy as np
 from scipy.ndimage import gaussian_filter
 from scipy import stats
 
-CSV_PATH = os.path.join(os.path.dirname(__file__), "results.csv")
-STATS_OUT_PATH = os.path.join(os.path.dirname(__file__), "validation_stats.json")
+from lunar_lander.paths import RESULTS_CSV as CSV_PATH, VALIDATION_STATS as STATS_OUT_PATH
 
 STROKE_LIMIT_M = 0.8
 GRID_MARGIN = 15.0
@@ -286,7 +284,7 @@ def main():
         json.dump(out, f, indent=2)
     print(f"\nSaved: {STATS_OUT_PATH}")
 
-    from summary_stats import merge_summary_stats
+    from lunar_lander.summary_stats import merge_summary_stats
     merge_summary_stats(dict(
         corr_force_slope_r=out["corr_force_slope_r"],
         corr_force_slope_p=out["corr_force_slope_p"],

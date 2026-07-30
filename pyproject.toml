@@ -55,3 +55,6 @@ ignore = ["E501"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-v --strict-markers"
+markers = [
+  "slow: end-to-end tests that step a full simulation (deselect with -m 'not slow')",
+]

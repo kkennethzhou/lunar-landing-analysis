@@ -7,18 +7,14 @@ Steps:
   3. Write ./mujoco_sim/lunar_world.xml — MuJoCo scene with mesh ground + lander.
 """
 
-import os
 import math
 import numpy as np
 import mujoco
 
+from lunar_lander.paths import XML_PATH, OBJ_PATH, HEIGHTFIELD_PATH, TERRAIN_STATS as TERRAIN_STATS_PATH
+
 GRID      = 128          # vertices per side
 SPACING   = 1.0         # metres between grid points  →  127 m × 127 m terrain
-OUT_DIR   = os.path.join(os.path.dirname(__file__), "..", "physics_mesh")
-XML_PATH  = os.path.join(os.path.dirname(__file__), "lunar_world.xml")
-OBJ_PATH  = os.path.join(OUT_DIR, "lunar_surface.obj")
-
-os.makedirs(OUT_DIR, exist_ok=True)
 
 
 # ── 1. Heightmap ─────────────────────────────────────────────────────────────
@@ -163,8 +159,8 @@ def write_obj(path: str, H: np.ndarray, spacing: float) -> None:
 
 
 print("Writing OBJ …")
-write_obj(OBJ_PATH, H, SPACING)
-size_mb = os.path.getsize(OBJ_PATH) / 1e6
+write_obj(str(OBJ_PATH), H, SPACING)
+size_mb = OBJ_PATH.stat().st_size / 1e6
 print(f"  Saved: {OBJ_PATH}  ({size_mb:.1f} MB)")
 
 # ── 2b. Heightfield PNG for collision ───────────────────────────────────────
@@ -178,7 +174,7 @@ print(f"  Saved: {OBJ_PATH}  ({size_mb:.1f} MB)")
 # primitive for terrain generated from a heightmap in the first place.
 # The OBJ mesh is still written above (visual reference / triangle-count
 # provenance); the PNG below drives actual collision + rendering.
-HFIELD_PNG_PATH = os.path.join(OUT_DIR, "lunar_heightfield.png")
+HFIELD_PNG_PATH = HEIGHTFIELD_PATH
 
 
 def write_heightfield_png(path: str, H: np.ndarray) -> None:
@@ -268,7 +264,7 @@ LEG_DAMPING   = 360    # N·s/m
 
 xml = f"""<mujoco model="lunar_world">
 
-  <compiler angle="radian" meshdir="../physics_mesh" autolimits="true"/>
+  <compiler angle="radian" meshdir="physics_mesh" autolimits="true"/>
 
   <option gravity="0 0 -1.62" timestep="0.002"/>
 
@@ -438,7 +434,7 @@ print(f"  Saved: {XML_PATH}")
 
 # ── 4. Verify total mass ═════════════════════════════════════════════════════
 
-model = mujoco.MjModel.from_xml_path(XML_PATH)
+model = mujoco.MjModel.from_xml_path(str(XML_PATH))
 
 # Sum mass over the lander's kinematic subtree only (lander_base + legs).
 # model.body_mass.sum() over the WHOLE model also includes the static
@@ -520,11 +516,10 @@ TERRAIN_STATS = dict(
 
 if __name__ == "__main__":
     import json
-    stats_path = os.path.join(os.path.dirname(__file__), "terrain_stats.json")
-    with open(stats_path, "w") as f:
+    with open(TERRAIN_STATS_PATH, "w") as f:
         json.dump(TERRAIN_STATS, f, indent=2)
-    print(f"  Saved terrain stats: {stats_path}")
+    print(f"  Saved terrain stats: {TERRAIN_STATS_PATH}")
 
-    from summary_stats import merge_summary_stats
+    from lunar_lander.summary_stats import merge_summary_stats
     merge_summary_stats(TERRAIN_STATS)
-    print(f"  Merged into summary_stats.json")
+    print("  Merged into summary_stats.json")
