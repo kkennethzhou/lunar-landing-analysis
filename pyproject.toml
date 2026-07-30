@@ -28,7 +28,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=7.4", "pytest-cov>=4.1", "ruff>=0.4"]
+dev = ["pytest>=7.4", "pytest-cov>=4.1", "ruff>=0.4", "python-pptx>=1.0"]
 imagery = ["opencv-python-headless", "imageio"]
 
 [project.scripts]
