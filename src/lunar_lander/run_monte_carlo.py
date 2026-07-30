@@ -437,6 +437,13 @@ def run_trial(model, data, x, y, vx, vy,
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="Monte Carlo lunar landing trials")
+    parser.add_argument("--trials", type=int, default=N_TRIALS,
+                         help="number of trials to run (default: %(default)s)")
+    args = parser.parse_args()
+    N_TRIALS = args.trials
+
     print(f"Loading model: {XML_PATH}")
     model = mujoco.MjModel.from_xml_path(str(XML_PATH))
     data  = mujoco.MjData(model)

@@ -36,11 +36,7 @@ jobs:
           MUJOCO_GL: osmesa
 
       - name: Tests
-        # test_static_equilibrium is expected to fail until BLOCKING-1 is
-        # fixed (see docs/known-issues.md). Remove continue-on-error once
-        # leg stiffness is corrected.
         run: pytest -m "not slow" --cov=lunar_lander --cov-report=term-missing
-        continue-on-error: true
         env:
           MUJOCO_GL: osmesa
 
