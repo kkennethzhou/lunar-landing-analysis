@@ -6,9 +6,10 @@ matches them with a FLANN-based matcher (Lowe ratio test), and writes
 a composite image to ./feature_matches.png.
 """
 
+import glob
 import os
 import sys
-import glob
+
 import cv2
 import numpy as np
 

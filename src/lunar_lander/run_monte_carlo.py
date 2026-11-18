@@ -14,10 +14,12 @@ Each trial:
 
 import csv
 import math
-import numpy as np
-import mujoco
 
-from lunar_lander.paths import XML_PATH, RESULTS_CSV as CSV_PATH
+import mujoco
+import numpy as np
+
+from lunar_lander.paths import RESULTS_CSV as CSV_PATH
+from lunar_lander.paths import XML_PATH
 
 N_TRIALS     = 500
 MAX_STEPS    = 12000       # 12000 x 0.002 s = 24 s max per trial
@@ -93,9 +95,6 @@ def vz_target_profile(agl, touchdown_vz=TOUCHDOWN_VZ):
 LEG_FORCE_LIMIT_N = 50_000.0
 STROKE_LIMIT_M     = 0.8      # joint range upper bound — bottoming out
 ACCEL_LIMIT_G      = 10.0
-
-rng = np.random.default_rng(42)
-
 
 def quat_to_tilt(q):
     """Return tilt angle (rad) from a MuJoCo wxyz quaternion."""
@@ -315,10 +314,9 @@ def run_trial(model, data, x, y, vx, vy,
     contact_forces = get_contact_forces(model, data)
 
     step = 0
-    for step in range(MAX_STEPS):
+    for step in range(MAX_STEPS):  # noqa: B007 — read after the loop as the step count
         # AGL (body height above local terrain) for crash detection.
         tz_here = terrain_z_at(model, data, data.qpos[0], data.qpos[1])
-        agl = data.qpos[2] - tz_here
 
         feet_down_now = sum(1 for f in contact_forces.values() if f > 1.0)
         if steps_since_touchdown is None and feet_down_now >= 3:
@@ -339,7 +337,6 @@ def run_trial(model, data, x, y, vx, vy,
         data.ctrl[engine_act] = thrust
 
         mujoco.mj_step(model, data)
-        step_n = step + 1
 
         tilt = quat_to_tilt(data.qpos[3:7])
         if tilt > TIP_THRESH:
@@ -436,17 +433,17 @@ def run_trial(model, data, x, y, vx, vy,
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
-if __name__ == "__main__":
-    import argparse
-    parser = argparse.ArgumentParser(description="Monte Carlo lunar landing trials")
-    parser.add_argument("--trials", type=int, default=N_TRIALS,
-                         help="number of trials to run (default: %(default)s)")
-    args = parser.parse_args()
-    N_TRIALS = args.trials
+def run_campaign(model, n_trials=N_TRIALS, seed=42, csv_path=CSV_PATH,
+                 progress=True, record_summary=True):
+    """Run the seeded descent Monte Carlo and return one dict per trial.
 
-    print(f"Loading model: {XML_PATH}")
-    model = mujoco.MjModel.from_xml_path(str(XML_PATH))
-    data  = mujoco.MjData(model)
+    The draw order matches the historical seed-42 campaign: positions, then
+    horizontal velocity, tilt, spin, friction, and the touchdown target.
+    """
+    rng = np.random.default_rng(seed)
+    data = mujoco.MjData(model)
+    trial_count = n_trials
+    out_csv = csv_path
 
     fieldnames = ["trial", "x", "y", "vx", "vy",
                   "peak_strut_force_N", "peak_contact_force_N",
@@ -457,28 +454,29 @@ if __name__ == "__main__":
                   # strut force, not the old solver-spike contact force.
                   "max_leg_force_N"]
 
-    xs  = rng.uniform(SPAWN_MIN, SPAWN_MAX, N_TRIALS)
-    ys  = rng.uniform(SPAWN_MIN, SPAWN_MAX, N_TRIALS)
-    vxs = rng.uniform(-VEL_RANGE, VEL_RANGE, N_TRIALS)
-    vys = rng.uniform(-VEL_RANGE, VEL_RANGE, N_TRIALS)
+    xs  = rng.uniform(SPAWN_MIN, SPAWN_MAX, trial_count)
+    ys  = rng.uniform(SPAWN_MIN, SPAWN_MAX, trial_count)
+    vxs = rng.uniform(-VEL_RANGE, VEL_RANGE, trial_count)
+    vys = rng.uniform(-VEL_RANGE, VEL_RANGE, trial_count)
 
-    tilt_degs    = rng.uniform(0.0, INIT_TILT_MAX_DEG, N_TRIALS)
-    tilt_angles  = rng.uniform(0.0, 2 * math.pi, N_TRIALS)
+    tilt_degs    = rng.uniform(0.0, INIT_TILT_MAX_DEG, trial_count)
+    tilt_angles  = rng.uniform(0.0, 2 * math.pi, trial_count)
     tilt_axes    = np.stack([np.cos(tilt_angles), np.sin(tilt_angles)], axis=1)
-    wxs = rng.uniform(-INIT_ANGVEL_MAX_RADPS, INIT_ANGVEL_MAX_RADPS, N_TRIALS)
-    wys = rng.uniform(-INIT_ANGVEL_MAX_RADPS, INIT_ANGVEL_MAX_RADPS, N_TRIALS)
-    wzs = rng.uniform(-INIT_ANGVEL_MAX_RADPS, INIT_ANGVEL_MAX_RADPS, N_TRIALS)
-    friction_scales = rng.uniform(FRICTION_SCALE_MIN, FRICTION_SCALE_MAX, N_TRIALS)
-    touchdown_targets = rng.uniform(TOUCHDOWN_VZ_MIN, TOUCHDOWN_VZ_MAX, N_TRIALS)
+    wxs = rng.uniform(-INIT_ANGVEL_MAX_RADPS, INIT_ANGVEL_MAX_RADPS, trial_count)
+    wys = rng.uniform(-INIT_ANGVEL_MAX_RADPS, INIT_ANGVEL_MAX_RADPS, trial_count)
+    wzs = rng.uniform(-INIT_ANGVEL_MAX_RADPS, INIT_ANGVEL_MAX_RADPS, trial_count)
+    friction_scales = rng.uniform(FRICTION_SCALE_MIN, FRICTION_SCALE_MAX, trial_count)
+    touchdown_targets = rng.uniform(TOUCHDOWN_VZ_MIN, TOUCHDOWN_VZ_MAX, trial_count)
 
     outcomes_count = {"landed": 0, "tipped": 0, "crashed": 0, "failed": 0, "timeout": 0}
     fail_reason_count = {}
 
-    with open(CSV_PATH, "w", newline="") as csvfile:
+    records = []
+    with open(out_csv, "w", newline="") as csvfile:
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
 
-        for i in range(N_TRIALS):
+        for i in range(trial_count):
             x, y, vx, vy = xs[i], ys[i], vxs[i], vys[i]
 
             r = run_trial(model, data, x, y, vx, vy,
@@ -490,6 +488,15 @@ if __name__ == "__main__":
             if r["fail_reason"]:
                 fail_reason_count[r["fail_reason"]] = fail_reason_count.get(r["fail_reason"], 0) + 1
 
+            record = {
+                "trial": i + 1,
+                "x": float(x), "y": float(y), "vx": float(vx), "vy": float(vy),
+                "peak_strut_force_N": float(r["peak_strut_force_N"]),
+                "peak_stroke_m": float(r["peak_stroke_m"]),
+                "outcome": r["outcome"],
+                "fail_reason": r["fail_reason"],
+            }
+            records.append(record)
             writer.writerow({
                 "trial":  i + 1,
                 "x":      f"{x:.2f}",
@@ -508,17 +515,20 @@ if __name__ == "__main__":
             })
             csvfile.flush()
 
-            bar_filled = int(30 * (i + 1) / N_TRIALS)
-            bar = "█" * bar_filled + "░" * (30 - bar_filled)
-            print(f"\r[{bar}] {i+1:3d}/{N_TRIALS}  {r['outcome']:<8}  "
-                  f"strut={r['peak_strut_force_N']:7.1f} N  stroke={r['peak_stroke_m']:.3f} m", end="", flush=True)
+            if progress:
+                bar_filled = int(30 * (i + 1) / trial_count)
+                bar = "█" * bar_filled + "░" * (30 - bar_filled)
+                print(f"\r[{bar}] {i+1:3d}/{trial_count}  {r['outcome']:<8}  "
+                      f"strut={r['peak_strut_force_N']:7.1f} N  stroke={r['peak_stroke_m']:.3f} m",
+                      end="", flush=True)
 
-    print(f"\n\nDone — results written to {CSV_PATH}")
+    if progress:
+        print(f"\n\nDone — results written to {out_csv}")
 
     # ── Summary ───────────────────────────────────────────────────────────────
 
     rows = []
-    with open(CSV_PATH) as f:
+    with open(out_csv) as f:
         for r in csv.DictReader(f):
             rows.append(r)
 
@@ -527,16 +537,16 @@ if __name__ == "__main__":
     steps_all = [int(r["steps"]) for r in rows]
     n_bottomed = sum(1 for s in strokes if s >= STROKE_LIMIT_M)
 
-    print(f"""
+    banner = f"""
 ╔══════════════════════════════════════════════════╗
-║          Monte Carlo Results  (n={N_TRIALS})          ║
+║          Monte Carlo Results  (n={trial_count})          ║
 ╠══════════════════════════════════════════════════╣
 ║  Outcome breakdown                              ║
-║    Landed safely : {outcomes_count['landed']:3d}  ({100*outcomes_count['landed']/N_TRIALS:5.1f}%)              ║
-║    Tipped >15°   : {outcomes_count['tipped']:3d}  ({100*outcomes_count['tipped']/N_TRIALS:5.1f}%)              ║
-║    Crashed       : {outcomes_count['crashed']:3d}  ({100*outcomes_count['crashed']/N_TRIALS:5.1f}%)              ║
-║    Failed (struct): {outcomes_count['failed']:3d}  ({100*outcomes_count['failed']/N_TRIALS:5.1f}%)              ║
-║    Timeout       : {outcomes_count['timeout']:3d}  ({100*outcomes_count['timeout']/N_TRIALS:5.1f}%)              ║
+║    Landed safely : {outcomes_count['landed']:3d}  ({100*outcomes_count['landed']/trial_count:5.1f}%)              ║
+║    Tipped >15°   : {outcomes_count['tipped']:3d}  ({100*outcomes_count['tipped']/trial_count:5.1f}%)              ║
+║    Crashed       : {outcomes_count['crashed']:3d}  ({100*outcomes_count['crashed']/trial_count:5.1f}%)              ║
+║    Failed (struct): {outcomes_count['failed']:3d}  ({100*outcomes_count['failed']/trial_count:5.1f}%)              ║
+║    Timeout       : {outcomes_count['timeout']:3d}  ({100*outcomes_count['timeout']/trial_count:5.1f}%)              ║
 ╠══════════════════════════════════════════════════╣
 ║  Failure reasons: {fail_reason_count}
 ╠══════════════════════════════════════════════════╣
@@ -554,14 +564,17 @@ if __name__ == "__main__":
 ║    Max  : {max(steps_all):5d}  ({max(steps_all)*0.002:.2f} s)                    ║
 ║    Mean : {int(sum(steps_all)/len(steps_all)):5d}  ({int(sum(steps_all)/len(steps_all))*0.002:.2f} s)                    ║
 ╚══════════════════════════════════════════════════╝
-""")
+"""
+    if progress:
+        print(banner)
 
-    from lunar_lander.summary_stats import merge_summary_stats
-    merge_summary_stats(dict(
-        n_trials=N_TRIALS,
+    if record_summary:
+        from lunar_lander.summary_stats import merge_summary_stats
+        merge_summary_stats(dict(
+        n_trials=trial_count,
         outcome_counts=outcomes_count,
         fail_reason_counts=fail_reason_count,
-        failure_rate_pct=100 * (N_TRIALS - outcomes_count["landed"]) / N_TRIALS,
+        failure_rate_pct=100 * (trial_count - outcomes_count["landed"]) / trial_count,
         touchdown_design_vz_mps=TOUCHDOWN_VZ,
         force_min_N=min(forces),
         force_max_N=max(forces),
@@ -577,6 +590,22 @@ if __name__ == "__main__":
         vel_range_mps=VEL_RANGE,
         grid_margin_m=GRID_MARGIN,
         spawn_min_m=SPAWN_MIN,
-        spawn_max_m=SPAWN_MAX,
-    ))
-    print("  Merged into summary_stats.json")
+            spawn_max_m=SPAWN_MAX,
+        ))
+        print("  Merged into summary_stats.json")
+    return records
+
+
+def main(argv=None):
+    import argparse
+    parser = argparse.ArgumentParser(description="Monte Carlo lunar landing trials")
+    parser.add_argument("--trials", type=int, default=N_TRIALS,
+                        help="number of trials to run (default: %(default)s)")
+    args = parser.parse_args(argv)
+    print(f"Loading model: {XML_PATH}")
+    model = mujoco.MjModel.from_xml_path(str(XML_PATH))
+    return run_campaign(model, n_trials=args.trials)
+
+
+if __name__ == "__main__":
+    main()

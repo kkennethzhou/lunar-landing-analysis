@@ -33,13 +33,15 @@ Checks:
 """
 
 import csv
+import json
 import math
 import sys
-import json
+
 import numpy as np
 from scipy import stats
 
-from lunar_lander.paths import RESULTS_CSV as CSV_PATH, VALIDATION_STATS as STATS_OUT_PATH
+from lunar_lander.paths import RESULTS_CSV as CSV_PATH
+from lunar_lander.paths import VALIDATION_STATS as STATS_OUT_PATH
 from lunar_lander.site_selection import recommended_site
 
 STROKE_LIMIT_M = 0.8
@@ -50,48 +52,11 @@ DENSITY_CONFOUND_THRESHOLD_M = 5.0
 BOOTSTRAP_SPREAD_THRESHOLD_M = 15.0
 
 
-# ── Terrain heightmap (duplicated from generate_world.py's layered_noise) ───
-# Duplicated rather than imported: generate_world.py is a top-level script
-# that regenerates the OBJ/XML/PNG as a side effect of being imported.
-# Keep this in sync with generate_world.py's layered_noise() + crater loop
-# if those parameters ever change.
-def _layered_noise(N: int) -> np.ndarray:
-    x = np.linspace(0, 2 * math.pi, N, endpoint=False)
-    y = np.linspace(0, 2 * math.pi, N, endpoint=False)
-    xg, yg = np.meshgrid(x, y)
-    h = np.zeros((N, N), dtype=np.float64)
-    h += 1.2 * np.sin(1.3 * xg) * np.cos(0.9 * yg)
-    h += 0.8 * np.cos(2.1 * xg + 0.4) * np.sin(1.7 * yg + 1.1)
-    h += 0.4 * np.sin(4.3 * xg + 0.7) * np.cos(3.8 * yg + 2.3)
-    h += 0.3 * np.cos(5.1 * xg + 1.2) * np.sin(4.6 * yg + 0.5)
-    h += 0.10 * np.sin(11.0 * xg + 2.1) * np.cos(9.7 * yg + 1.3)
-    h += 0.07 * np.cos(13.0 * xg + 0.3) * np.sin(12.0 * yg + 0.8)
-    craters = [
-        (1.1, 1.4, 0.35, 1.8), (3.8, 2.1, 0.25, 1.2), (5.2, 4.7, 0.40, 2.0),
-        (2.5, 5.3, 0.20, 0.9), (4.1, 0.9, 0.30, 1.5), (0.6, 3.6, 0.18, 0.7),
-        (6.0, 1.8, 0.28, 1.3),
-    ]
-    for cx, cy, r, d in craters:
-        dist = np.sqrt((xg - cx) ** 2 + (yg - cy) ** 2)
-        pit = d * np.exp(-((dist / r) ** 2))
-        rim = 0.3 * d * np.exp(-(((dist - 1.2 * r) / (0.4 * r)) ** 2))
-        h -= (pit - rim)
-    boulders = [
-        (2.0, 4.0, 0.10, 0.5), (4.8, 2.8, 0.08, 0.4),
-        (1.5, 0.7, 0.07, 0.3), (5.5, 5.1, 0.09, 0.45),
-    ]
-    for bx, by, r, bump in boulders:
-        dist = np.sqrt((xg - bx) ** 2 + (yg - by) ** 2)
-        h += bump * np.exp(-((dist / r) ** 2))
-    return h
-
-
-def load_terrain():
-    H = _layered_noise(GRID)
-    H -= H.min()
-    gy, gx = np.gradient(H, 1.0)
-    slope_deg = np.degrees(np.arctan(np.hypot(gx, gy)))
-    return H, slope_deg
+def load_terrain(preset="nominal"):
+    """Height and slope from the same function that writes the MuJoCo world."""
+    from lunar_lander.generate_world import make_heightmap, slope_degrees
+    H = make_heightmap(preset, n=GRID)
+    return H, slope_degrees(H)
 
 
 def sample_grid(field, x, y):

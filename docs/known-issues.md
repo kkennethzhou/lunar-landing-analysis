@@ -39,7 +39,9 @@ Bootstrap 95% spread on the recommended coordinate: **58.4 m** across a 97 m dom
 2. ~~Fixing BLOCKING-1 and BLOCKING-2, so the legs actually carry load through touchdown.~~ **Fixed.** See below. Forces are now physically real (5.7–23.2 kN range, no bottom-outs) and the engine genuinely cuts at touchdown — and the signal is still absent.
 3. **Widening terrain roughness** — the current heightfield may be too benign for a 2.5 m leg span to notice. This is the one remaining untested hypothesis, and it requires redesigning the terrain generator (larger craters, steeper local gradients relative to the lander's footprint), not another physics or analysis fix.
 
-With the two plausible physics confounds eliminated and the most promising analysis (partial correlation) tested directly, the correct conclusion for this experimental design, as built, is that it does not resolve site quality — the negative result stands. It would take a deliberately harsher terrain generator, not a physics fix, to test hypothesis 3.
+With the two plausible physics confounds eliminated and the most promising analysis (partial correlation) tested directly, the correct conclusion for this experimental design, as built, is that it does not resolve site quality — the negative result stands.
+
+Hypothesis 3 has a script: `python -m lunar_lander.compare_roughness`. It rebuilds the same lander on a harsher heightfield (crater depths ×3, medium ridges ×2) and repeats a shorter seeded campaign. The committed probe (`docs/roughness_comparison.json`, 40 trials, seed 42) raises relief from 4.44 m to 8.77 m and the failure rate from 12.5% to 37.5%. The force–slope correlation does not appear (`r = 0.039`, `p = 0.85`, against `r = 0.188`, `p = 0.28` on the nominal preset at the same sample size). That file is a probe. It does not replace the 500-trial result above.
 
 ---
 
@@ -126,4 +128,4 @@ With under-sized gear, legs bottomed out on their joint limits every trial. Repo
 
 An explicit `<inertial mass="800">` on `lander_base` silently overrode the bus (400) + engine (50) + tank (200) geom masses. Actual model mass was 960 kg while every document claimed 1,000 kg, and `diaginertia="300 300 150"` was hand-picked against a correct Izz of 768.
 
-**Fixed** by removing the `<inertial>` element, deriving mass and inertia from geometry, and asserting `model.body_mass.sum() == 1000.0` at generation time.
+**Fixed** by removing the `<inertial>` element and deriving mass and inertia from geometry. The check is the lander subtree mass, not `model.body_mass.sum()`: the heightfield body is assigned a huge geometry-derived mass and is not part of the lander.

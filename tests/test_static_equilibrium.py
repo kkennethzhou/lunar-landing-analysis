@@ -7,9 +7,8 @@ stiffness bug (docs/known-issues.md BLOCKING-1) survived a full 500-trial
 campaign because every check compared simulation output against other
 simulation output. Nothing asked whether the lander could stand up.
 
-test_legs_support_static_weight is currently EXPECTED TO FAIL at the shipped
-stiffness of 320 N/m. That is the point — it is the test that should have
-existed before the campaign ran.
+The shipped stiffness is 3000 N/m. These checks are what rejected 320 N/m:
+static lunar weight per leg does not fit inside the stroke at that spring rate.
 """
 
 import math

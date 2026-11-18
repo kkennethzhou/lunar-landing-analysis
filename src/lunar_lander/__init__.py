@@ -11,7 +11,7 @@ Note: validate_results currently FAILS its signal and bootstrap checks.
 See docs/known-issues.md before trusting any recommended coordinate.
 """
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 __all__ = [
     "generate_world",
     "run_monte_carlo",

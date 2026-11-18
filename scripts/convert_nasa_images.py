@@ -9,7 +9,7 @@ reads the raw pixels, normalises contrast, and saves PNG files.
 
 import os
 import re
-import struct
+
 import numpy as np
 from PIL import Image
 

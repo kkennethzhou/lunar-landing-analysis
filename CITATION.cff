@@ -1,0 +1,11 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "Lunar landing analysis: a MuJoCo Monte Carlo pipeline that tests its own site recommendation"
+type: software
+authors:
+  - family-names: Zhou
+    given-names: Kenneth
+repository-code: "https://github.com/kkennethzhou/lunar-landing-analysis"
+license: MIT
+version: 0.3.0
+date-released: 2026-11-18

@@ -1,0 +1,34 @@
+{
+  "n_trials": 40,
+  "seed": 42,
+  "presets": {
+    "nominal": {
+      "preset": "nominal",
+      "relief_m": 4.443909476770371,
+      "slope_mean_deg": 6.456381488664372,
+      "slope_p95_deg": 12.73425820462992,
+      "slope_max_deg": 27.774036249235078,
+      "n_trials": 40,
+      "n_landed": 35,
+      "failure_rate_pct": 12.5,
+      "corr_force_slope_r": 0.1880161621818374,
+      "corr_force_slope_p": 0.2794283909267161,
+      "stroke_max_m": 0.1378236789616663
+    },
+    "harsh": {
+      "preset": "harsh",
+      "relief_m": 8.771187867372177,
+      "slope_mean_deg": 10.843403128528704,
+      "slope_p95_deg": 30.332071772490874,
+      "slope_max_deg": 50.37191107965992,
+      "n_trials": 40,
+      "n_landed": 25,
+      "failure_rate_pct": 37.5,
+      "corr_force_slope_r": 0.03871060251971046,
+      "corr_force_slope_p": 0.8542391892836063,
+      "stroke_max_m": 0.15650827545672144
+    }
+  },
+  "note": "Same seed and same lander. A correlation here is a probe, not a replacement for the 500-trial validation_stats.json result.",
+  "harsh_relief_over_nominal": 1.9737548465426151
+}

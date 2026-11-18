@@ -40,8 +40,8 @@ jobs:
         env:
           MUJOCO_GL: osmesa
 
-      - name: Smoke test - short Monte Carlo
-        run: python -m lunar_lander.run_monte_carlo --trials 10
-        continue-on-error: true
+      - name: Physics regression
+        if: matrix.python-version == '3.11'
+        run: pytest -m slow
         env:
           MUJOCO_GL: osmesa

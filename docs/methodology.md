@@ -48,7 +48,9 @@ Four sinusoidal octaves (broad undulation, medium ridges, fine texture), seven c
 
 `relief / width = 4.44/127 ≈ 2°` is the whole-domain tilt and understates difficulty by 3×.
 
-**Collision uses `<hfield>`, not `<geom type="mesh">`.** MuJoCo evaluates mesh collision against the convex hull, which erases every crater while leaving them visible in the render.
+**Collision uses `<hfield>`, not `<geom type="mesh">`.** MuJoCo evaluates mesh collision against the convex hull, which erases every crater while leaving them visible in the render. `python -m lunar_lander.convex_gap` writes the gap at each crater floor to `docs/convex_gap.json`.
+
+The heightfield file is an 8-bit PNG. Pixel 0 is z = 0 and pixel 255 is the full relief, so the vertical step is relief/255 (about 1.7 cm on the 4.44 m nominal grid). That is the collision surface. It is not a centimetre-accurate elevation model.
 
 ## 4. Lander model
 
@@ -68,7 +70,7 @@ Mass and inertia are derived from geometry — no explicit `<inertial>` element,
 - Static: `405 N / k ≤ 0.2 × 0.8 m` ⇒ `k ≥ 2,500 N/m`
 - Dynamic: solve `2k·x² − W·x − KE = 0` at 1.5 m/s ⇒ `x ≤ 0.6 m`
 
-The shipped value of 320 N/m satisfies neither (see known-issues BLOCKING-1).
+The shipped stiffness is 3,000 N/m and the damping is 1,200 N·s/m. An earlier 320 N/m spring could not hold the lander up inside the stroke. See known-issues BLOCKING-1.
 
 ## 5. Descent control
 
@@ -81,7 +83,7 @@ v_target(agl) = −10 m/s                        otherwise
 
 PD on velocity error plus feed-forward `m·(g + a_ff)`. Pure PD lagged the ramping target under constant gravity bias (Type-1 steady-state error) and arrived at 2.6–2.8 m/s; the feed-forward term closes that gap.
 
-**Known defect:** thrust is never cut at contact, so the engine holds the vehicle's weight while the settle detector fires (BLOCKING-2).
+Once three feet are in contact, thrust ramps to zero over 0.2 s. An earlier controller kept the hover feed-forward on after touchdown, so the legs never carried the vehicle's weight (known-issues BLOCKING-2).
 
 ## 6. Monte Carlo
 
@@ -91,7 +93,7 @@ PD on velocity error plus feed-forward `m·(g + a_ff)`. Pure PD lagged the rampi
 
 **Success:** ≥3 footpads in contact > 1 N for 150 *consecutive* steps, |vz| < 0.02 m/s, |vx|,|vy| < 0.05 m/s.
 
-Result: 84% landed, 13.2% tipped, 2.6% over-g, 1 timeout.
+Result, from `output/summary_stats.json`: 422 landed, 43 tipped, 16 over-acceleration, 19 timeouts (15.6% not landed). Peak stroke 0.144 m. A separate roughness probe, `python -m lunar_lander.compare_roughness`, reruns a shorter campaign on a deeper crater field and writes `docs/roughness_comparison.json`. It does not replace the 500-trial result.
 
 ## 7. Site selection
 
@@ -109,9 +111,10 @@ An earlier version accumulated with `+=`, so three mediocre trials outranked one
 
 Four checks, all run automatically:
 
-1. **Signal** — `corr(force, slope)` with p-value. Below |r| = 0.2, the map has no terrain information.
-2. **Density confound** — how far the answer moves when forces are replaced by a constant.
-3. **Bootstrap** — 1000 resamples; spread of the recommended coordinate.
-4. **Bottom-out** — hard fail if any leg reached its stroke limit.
+1. **Signal** — `corr(force, slope)` with p-value, plus the partial correlation controlling for horizontal drift. Below |r| = 0.2, the map has no terrain information.
+2. **Failure vs terrain** — whether failures track slope.
+3. **Density confound** — how far the answer moves when forces are replaced by a constant. Reported inconclusive when the signal test has already failed.
+4. **Bootstrap** — 1000 resamples; spread of the recommended coordinate.
+5. **Bottom-out** — hard fail if any leg reached its stroke limit.
 
-Current status: checks 1 and 3 fail. See [known-issues.md](known-issues.md) OPEN-1.
+Current status: the signal and bootstrap checks fail. See [known-issues.md](known-issues.md) OPEN-1.

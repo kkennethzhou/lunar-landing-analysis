@@ -40,7 +40,9 @@ corr(trial_failed, local_terrain_slope)                            = +0.070  (p 
 
 The recommended coordinate moves by tens of metres under bootstrap resampling (95% spread: 58.4 m across a 97 m domain). A "safety map" built from this data is smoothed noise — it looks convincing and means nothing.
 
-This is a negative result, and it now stands on firmer ground than the first version of this claim: the two physics defects that could have produced it (undersized landing gear, thrust never cutting at touchdown) are both fixed, and the most promising remaining hypothesis — that drift variance was masking a real terrain effect — was tested directly and didn't pan out. See [Known Issues](#known-issues) for what was fixed and what that leaves open.
+This is a negative result, and it now stands on firmer ground than the first version of this claim: the two physics defects that could have produced it (undersized landing gear, thrust never cutting at touchdown) are both fixed, and the most promising remaining hypothesis — that drift variance was masking a real terrain effect — was tested directly and didn't pan out. A 40-trial probe on a harsher preset (relief 8.77 m instead of 4.44 m) raises the failure rate from 12.5% to 37.5% and still shows no force–slope correlation (`docs/roughness_comparison.json`). See [Known Issues](#known-issues).
+
+The convex-hull gap is measured, not just described. At the deepest sampled crater the hull and the mesh contact sit 4.10 m above the floor; the heightfield contact sits 2.6 cm below it (`docs/convex_gap.json`). The heightfield PNG stores that relief in 256 levels, about 1.7 cm per step.
 
 ## Bugs worth knowing about
 
@@ -70,6 +72,10 @@ python -m lunar_lander.generate_world      # terrain + MJCF
 python -m lunar_lander.run_monte_carlo     # 500 trials -> results.csv
 python -m lunar_lander.plot_landing_zones  # safety map
 python -m lunar_lander.validate_results    # does any of it mean anything?
+
+# Collision gap at crater floors, and a short harsher-terrain probe
+python -m lunar_lander.convex_gap
+python -m lunar_lander.compare_roughness --trials 40
 ```
 
 Everything runs offline and deterministically from `seed = 42`. No GPU required; a 500-trial run takes roughly 10 minutes on an M-series Mac.

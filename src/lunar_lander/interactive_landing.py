@@ -8,12 +8,13 @@ Flight modes
   2. Unstable Stress Test — extreme tumble + cross-drift injected automatically
 """
 
-import sys
 import math
+import sys
 import time
-import numpy as np
+
 import mujoco
 import mujoco.viewer
+import numpy as np
 
 from lunar_lander.paths import XML_PATH
 
@@ -48,7 +49,7 @@ B   = "\033[1m"     # bold
 DIM = "\033[2m"
 RST = "\033[0m"
 
-BOLD_RED = f"\033[1;91m"
+BOLD_RED = "\033[1;91m"
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
