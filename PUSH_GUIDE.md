@@ -1,6 +1,6 @@
 # Step-by-Step: Push to GitHub
 
-**You already have git installed** — your `LunarProject` folder has 7 commits in it. So skip installation and start at Step 1.
+**You already have git installed**: your `LunarProject` folder has 7 commits in it. So skip installation and start at Step 1.
 
 Open **Terminal** (press `Cmd + Space`, type `Terminal`, hit Enter). Every command below gets pasted there, one at a time, pressing Enter after each.
 
@@ -8,7 +8,7 @@ Open **Terminal** (press `Cmd + Space`, type `Terminal`, hit Enter). Every comma
 
 ---
 
-## Step 0 — Confirm git works (10 seconds)
+## Step 0: Confirm git works (10 seconds)
 
 ```bash
 git --version
@@ -24,9 +24,9 @@ Run `xcode-select --install`, click **Install** in the popup, wait ~5 minutes, t
 
 ---
 
-## Step 1 — Tell git who you are
+## Step 1: Tell git who you are
 
-Only needed once per computer. If you've committed before, this is already set — running it again is harmless.
+Only needed once per computer. If you've committed before, this is already set: running it again is harmless.
 
 ```bash
 git config --global user.name "Kenneth Zhou"
@@ -37,7 +37,7 @@ git config --global user.email "zhoukenneth814@gmail.com"
 
 ---
 
-## Step 2 — Create a GitHub account
+## Step 2: Create a GitHub account
 
 Skip if you have one.
 
@@ -45,11 +45,11 @@ Skip if you have one.
 2. Sign up with `zhoukenneth814@gmail.com`
 3. Verify your email
 
-**Then turn on two-factor authentication** — GitHub requires it for all contributors, and it's easier to do now than mid-push. Profile photo (top-right) → Settings → Password and authentication → Two-factor authentication.
+**Then turn on two-factor authentication**: GitHub requires it for all contributors, and it's easier to do now than mid-push. Profile photo (top-right) → Settings → Password and authentication → Two-factor authentication.
 
 ---
 
-## Step 3 — Create the empty repository
+## Step 3: Create the empty repository
 
 1. Go to **https://github.com/new**
 2. Fill in:
@@ -57,20 +57,20 @@ Skip if you have one.
 | Field | Value |
 |---|---|
 | Repository name | `lunar-landing-analysis` |
-| Description | `MuJoCo Monte Carlo pipeline for lunar landing site selection, with a validation suite that checks whether the result means anything` |
+| Description | `MuJoCo Monte Carlo landings on procedural lunar terrain, with checks on the recommended site` |
 | Visibility | **Public** |
-| Add a README file | ❌ **leave unchecked** |
-| Add .gitignore | ❌ **None** |
-| Choose a license | ❌ **None** |
+| Add a README file |  **leave unchecked** |
+| Add .gitignore |  **None** |
+| Choose a license |  **None** |
 
-> ⚠️ **Those last three must stay empty.** You already have a README, .gitignore, and LICENSE. If GitHub creates its own, your first push gets rejected with a confusing "unrelated histories" error.
+>  **Those last three must stay empty.** You already have a README, .gitignore, and LICENSE. If GitHub creates its own, your first push gets rejected with a confusing "unrelated histories" error.
 
 3. Click **Create repository**
-4. Leave the page open — you'll copy the URL from it in Step 6
+4. Leave the page open: you'll copy the URL from it in Step 6
 
 ---
 
-## Step 4 — Placeholders (already done)
+## Step 4: Placeholders (already done)
 
 Your username `kkennethzhou` is already filled into `pyproject.toml`, `README.md`, and `CONTRIBUTING.md`. Nothing to do here.
 
@@ -85,7 +85,7 @@ grep -rn "CHANGEME\|YOUR-USERNAME" . --include="*.md" --include="*.toml"
 
 ---
 
-## Step 5 — Initialize the repo and commit
+## Step 5: Initialize the repo and commit
 
 ```bash
 cd ~/Downloads/MyFiles/LunarProject/github-release
@@ -93,13 +93,13 @@ git init
 git add -A
 ```
 
-### Check what you're about to commit — do not skip this
+### Check what you're about to commit: do not skip this
 
 ```bash
 git status --short | wc -l
 ```
 
-**You should see a number between 20 and 30.** If it's in the hundreds or thousands, `.gitignore` isn't working — jump to Troubleshooting.
+**You should see a number between 20 and 30.** If it's in the hundreds or thousands, `.gitignore` isn't working: jump to Troubleshooting.
 
 Now confirm no giant files snuck in:
 
@@ -107,7 +107,7 @@ Now confirm no giant files snuck in:
 git count-objects -vH | grep size
 ```
 
-**Should be well under 1 MB.** If it says hundreds of MB, stop — see Troubleshooting.
+**Should be well under 1 MB.** If it says hundreds of MB, stop: see Troubleshooting.
 
 One more check, that the NASA images are properly excluded:
 
@@ -129,7 +129,7 @@ physics defects are documented but unfixed. See docs/known-issues.md."
 
 ---
 
-## Step 6 — Connect to GitHub and push
+## Step 6: Connect to GitHub and push
 
 ```bash
 git branch -M main
@@ -137,7 +137,7 @@ git remote add origin https://github.com/kkennethzhou/lunar-landing-analysis.git
 git push -u origin main
 ```
 
-That URL is already correct for your account — paste the three lines as-is.
+That URL is already correct for your account: paste the three lines as-is.
 
 ### When it asks for a password
 
@@ -150,12 +150,12 @@ A browser window or a terminal prompt will appear.
 1. Go to **https://github.com/settings/tokens/new**
 2. Note: `lunar-landing-analysis push`
 3. Expiration: 90 days
-4. Check the **`repo`** box (the top-level one — it selects the sub-items automatically)
+4. Check the **`repo`** box (the top-level one: it selects the sub-items automatically)
 5. Scroll down, click **Generate token**
-6. **Copy the token now** — `ghp_...`. GitHub shows it exactly once.
+6. **Copy the token now**: `ghp_...`. GitHub shows it exactly once.
 7. Back in Terminal: username is your GitHub username, and **paste the token as the password**
 
-> The cursor won't move while you paste the password. That's normal — it's hiding your input. Paste and press Enter.
+> The cursor won't move while you paste the password. That's normal: it's hiding your input. Paste and press Enter.
 
 <details>
 <summary>Save the token so you only do this once</summary>
@@ -169,7 +169,7 @@ Run this *before* pushing, and macOS Keychain stores the token after the first s
 
 ---
 
-## Step 7 — Verify
+## Step 7: Verify
 
 ```bash
 open https://github.com/kkennethzhou/lunar-landing-analysis
@@ -179,14 +179,14 @@ Check that:
 
 - [ ] The README renders with the badges at top
 - [ ] There's **no** `lunar_images` folder
-- [ ] Repo size is small — Settings → scroll down, should be a few hundred KB
+- [ ] Repo size is small: Settings → scroll down, should be a few hundred KB
 - [ ] `docs/`, `src/`, `tests/`, `scripts/` are all there
 
 ---
 
-## Step 8 — Polish the repo page
+## Step 8: Polish the repo page
 
-**Add topics** — click the ⚙️ gear next to "About" on the right side:
+**Add topics**: click the  gear next to "About" on the right side:
 
 ```
 mujoco  simulation  monte-carlo  lunar  nasa  robotics  physics-simulation
@@ -198,7 +198,7 @@ mujoco  simulation  monte-carlo  lunar  nasa  robotics  physics-simulation
 |---|---|
 | BLOCKING-1: Landing gear cannot support vehicle at rest (k=320 N/m) | `bug` |
 | BLOCKING-2: Thrust never cut at touchdown | `bug` |
-| OPEN-1: No terrain signal in safety map — is it recoverable? | `help wanted` |
+| OPEN-1: No terrain signal in safety map: is it recoverable? | `help wanted` |
 
 Pin OPEN-1 (⋯ menu on the issue → Pin issue). It's the most interesting problem in the repo and the one most likely to attract a good contributor.
 
@@ -217,7 +217,7 @@ git commit -m "Fix leg stiffness: 320 -> 3000 N/m"
 git push
 ```
 
-That's it — after the first push, plain `git push` works with no extra arguments.
+That's it: after the first push, plain `git push` works with no extra arguments.
 
 Useful when things go sideways:
 
@@ -245,11 +245,11 @@ git status --short | wc -l        # should now be 20-30
 
 ### Push rejected: "remote contains work you do not have locally"
 
-You checked one of the "Add README / .gitignore / license" boxes in Step 3. Easiest fix — delete the GitHub repo (Settings → scroll to bottom → Delete this repository) and redo Step 3 with all three boxes unchecked.
+You checked one of the "Add README / .gitignore / license" boxes in Step 3. Easiest fix: delete the GitHub repo (Settings → scroll to bottom → Delete this repository) and redo Step 3 with all three boxes unchecked.
 
 ### "Support for password authentication was removed"
 
-Expected. Use a Personal Access Token — see Step 6.
+Expected. Use a Personal Access Token: see Step 6.
 
 ### "remote origin already exists"
 
@@ -282,7 +282,7 @@ git push
 
 ### I want to start completely over
 
-Nothing is lost — this deletes only git's bookkeeping, not your files:
+Nothing is lost: this deletes only git's bookkeeping, not your files:
 
 ```bash
 cd ~/Downloads/MyFiles/LunarProject/github-release
@@ -295,8 +295,8 @@ Then start again from Step 5.
 
 ## What about the old 1.9 GB repo?
 
-Your `LunarProject/.git` has the NASA PNGs committed, which is why it's 1.9 GB. **Leave it alone** — it's your private working history and it's useful. It just shouldn't go to GitHub.
+Your `LunarProject/.git` has the NASA PNGs committed, which is why it's 1.9 GB. **Leave it alone**: it's your private working history and it's useful. It just shouldn't go to GitHub.
 
 `github-release/` is a completely separate repo with its own `.git`. The two don't interact.
 
-If you ever want the phase-by-phase commit history public too, that needs `git-filter-repo` to strip the images from history first — a separate job, and not necessary for a first release.
+If you ever want the phase-by-phase commit history public too, that needs `git-filter-repo` to strip the images from history first: a separate job, and not necessary for a first release.

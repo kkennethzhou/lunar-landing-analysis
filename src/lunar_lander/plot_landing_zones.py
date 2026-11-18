@@ -1,18 +1,10 @@
-"""
-Parse results.csv and produce optimal_landing_zones.png —
-a scatter heatmap coloured by outcome with the safest cluster marked.
+"""Read results.csv and write optimal_landing_zones.png.
 
-Site-selection method: Nadaraya-Watson kernel regression (a local
-weighted MEAN of peak strut force), not the old score-accumulation
-approach. Accumulating scores with `+=` made the map a density map
-wearing a safety map's clothes: three mediocre trials could outrank one
-excellent trial just by clustering together. Kernel regression divides
-the smoothed force SUM by the smoothed trial COUNT at every cell, so
-adding more trials to a location shifts its estimated force toward the
-true local mean instead of inflating an unbounded accumulator. Sparse
-cells (few effective samples) are masked out so they can't win by
-chance, and the recommended site is the ARGMIN of local mean force
-(safest = lowest force), not the argmax of an accumulated score.
+The map is a Nadaraya-Watson local mean of peak strut force. An earlier
+version added scores with +=, so a pile of ordinary landings could rank
+above one good one. Dividing the smoothed force sum by the smoothed count
+avoids that. Cells with fewer than 5 effective samples are left out. The
+recommended site is the minimum of what remains.
 """
 
 import csv
@@ -32,7 +24,7 @@ from lunar_lander.site_selection import kernel_regression_field, recommended_sit
 
 
 def main():
-    # ── Load data ────────────────────────────────────────────────────────────────
+    # Load data
 
     rows = []
     with open(CSV_PATH) as f:
@@ -55,7 +47,7 @@ def main():
     ux = np.array([r["x"] for r in unsafe]) if unsafe else np.array([])
     uy = np.array([r["y"] for r in unsafe]) if unsafe else np.array([])
 
-    # ── Kernel-regression safety field (safe points only) ────────────────────────
+    # Kernel-regression safety field (safe points only)
     # GRID_MARGIN=15 in run_monte_carlo.py confines spawns to [15, 112] on a
     # 0-127 m terrain -> the analysis domain is 97x97 m, not the full
     # 127x127 m terrain. Label this correctly rather than implying full
@@ -64,7 +56,7 @@ def main():
     # validate_results.py so both scripts agree on what "recommended site"
     # and "density confound" mean (docs/known-issues.md MINOR-1: they used
     # to disagree, 98.58 m vs 11.72 m, because they compared against
-    # different things — a constant-force argmin here now, not a pure-density
+    # different things: a constant-force argmin here now, not a pure-density
     # argmax, matching validate_results.py's definition).
     GRID_RES = 200
     x_min, x_max = 15.0, 112.0   # terrain spawn bounds (GRID_MARGIN to 127-GRID_MARGIN)
@@ -101,14 +93,14 @@ def main():
     mean_cluster_force = (sum(f for _, _, f in cluster_pts) / len(cluster_pts)
                           if cluster_pts else 0.0)
 
-    # ── Density-confound check (same constant-force-argmin definition as
+    # Density-confound check (same constant-force-argmin definition as
     #    validate_results.py; Phase 4 validation is the authoritative check,
-    #    this is kept here too so the printed summary is self-contained) ────────
+    #    this is kept here too so the printed summary is self-contained)
     const_x, const_y = recommended_site(sx, sy, np.ones_like(sf), **field_kwargs)
     density_confound_dist_m = (math.hypot(opt_x - const_x, opt_y - const_y)
                                 if const_x is not None else None)
 
-    # ── Plot ──────────────────────────────────────────────────────────────────────
+    # Plot
 
     fig, ax = plt.subplots(figsize=(11, 10))
     fig.patch.set_facecolor("#0d0d1a")
@@ -124,7 +116,7 @@ def main():
         aspect="auto", interpolation="bilinear",
     )
 
-    # Safe landings — colour by impact force
+    # Safe landings: colour by impact force
     sc = ax.scatter(
         sx, sy,
         c=sf / 1e3,           # kN
@@ -219,7 +211,7 @@ def main():
     plt.savefig(OUT_PATH, dpi=160, bbox_inches="tight",
                 facecolor=fig.get_facecolor())
     print(f"Saved: {OUT_PATH}")
-    print(f"Recommended site: ({opt_x:.2f}, {opt_y:.2f}) m  —  "
+    print(f"Recommended site: ({opt_x:.2f}, {opt_y:.2f}) m, "
           f"local mean force {opt_local_force/1e3:.2f} kN  "
           f"({len(cluster_pts)} pts in {cluster_radius:.0f} m radius, "
           f"raw cluster avg {mean_cluster_force/1e3:.2f} kN)")
@@ -230,7 +222,7 @@ def main():
           f"{density_confound_dist_m:.2f} m if every force is replaced by a "
           f"constant (constant-force site at ({const_x:.1f}, {const_y:.1f}))")
 
-    # ── Export for summary_stats.json / verify_deck.py ──────────────────────────
+    # Export for summary_stats.json / verify_deck.py
     SITE_SELECTION_STATS = dict(
         recommended_x_m=float(opt_x),
         recommended_y_m=float(opt_y),
@@ -262,7 +254,6 @@ def main():
     from lunar_lander.summary_stats import merge_summary_stats
     merge_summary_stats(SITE_SELECTION_STATS)
     print("Merged into summary_stats.json")
-
 
 if __name__ == "__main__":
     main()

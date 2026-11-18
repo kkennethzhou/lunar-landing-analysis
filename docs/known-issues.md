@@ -1,131 +1,109 @@
-# Known Issues
+# Known issues
 
-Current as of the round-3 public release. Both blocking defects from round 2 are fixed; the open question about whether a terrain signal exists has been tested, not just hypothesized about, and the negative result stands.
+Current as of the 0.3.0 release. Both blocking defects from the previous round are fixed. The open question, whether a terrain signal shows up once the physics is fixed, has been run. It does not.
 
-Each entry states the symptom, the evidence, the root cause, and the fix — in that order, because the symptom is usually what someone else will notice first.
+## OPEN-1. No terrain signal in the safety map
 
----
+The recommended landing coordinate is not statistically defensible.
 
-## 🟠 OPEN-1 — No terrain signal in the safety map
-
-**Symptom.** The core deliverable — a recommended landing coordinate — is not statistically defensible.
-
-**Evidence** (500 trials, seed 42, 15.6% failure rate, both BLOCKING-1 and BLOCKING-2 fixed):
+Evidence from 500 trials, seed 42, 15.6% not landed, with both blocking fixes in:
 
 ```
-corr(force, local_slope)                          = +0.025  (p = 0.61)   <- no signal
-corr(force, elevation)                             = -0.022  (p = 0.65)   <- no signal
-corr(force, |v_horizontal|)                        = +0.525  (p = 3e-31)  <- dominates
-corr(force, local_slope | |v_horizontal|)          = +0.005  (p = 0.92)   <- partial correlation: still no signal
-corr(failed, local_slope)                          = +0.070  (p = 0.12)   <- not significant
+corr(force, local_slope)                  = +0.025  (p = 0.61)
+corr(force, elevation)                    = -0.022  (p = 0.65)
+corr(force, |v_horizontal|)               = +0.525  (p = 3e-31)
+corr(force, local_slope | |v_horizontal|) = +0.005  (p = 0.92)
+corr(failed, local_slope)                 = +0.070  (p = 0.12)
 ```
 
-Failure rate by slope quartile is flat:
+Failure rate by slope quartile:
 
 | Slope range | Failure rate |
 |---|---|
-| 0.4–3.8° | 14.4% |
-| 3.8–5.9° | 16.8% |
-| 5.9–8.1° | 14.4% |
-| 8.1–21.6° | 16.8% |
+| 0.4-3.8° | 14.4% |
+| 3.8-5.9° | 16.8% |
+| 5.9-8.1° | 14.4% |
+| 8.1-21.6° | 16.8% |
 
-Bootstrap 95% spread on the recommended coordinate: **58.4 m** across a 97 m domain.
+Bootstrap 95% spread on the recommended coordinate: 58.4 m across a 97 m domain.
 
-**Interpretation.** The simulation is measuring approach conditions (drift speed), not site quality. Any "optimal site" extracted from this data is an artifact of where trials happened to cluster.
+The simulation is mostly measuring approach conditions. A coordinate pulled out of this map is where the trials happened to cluster.
 
-**Status: negative result, now well-supported.** Round 2 listed three things that could still change this, in order of promise. All three that were physics/analysis fixes have now been tried:
+Three follow-ups were listed before this release:
 
-1. ~~Partial correlation of force against slope controlling for `|v|`.~~ **Tested — no signal.** `r=+0.005, p=0.92`, flatter than the raw correlation, not masked by it.
-2. ~~Fixing BLOCKING-1 and BLOCKING-2, so the legs actually carry load through touchdown.~~ **Fixed.** See below. Forces are now physically real (5.7–23.2 kN range, no bottom-outs) and the engine genuinely cuts at touchdown — and the signal is still absent.
-3. **Widening terrain roughness** — the current heightfield may be too benign for a 2.5 m leg span to notice. This is the one remaining untested hypothesis, and it requires redesigning the terrain generator (larger craters, steeper local gradients relative to the lander's footprint), not another physics or analysis fix.
+1. Partial correlation of force against slope, controlling for `|v|`. Tested. r=+0.005, p=0.92. Flatter than the raw correlation.
+2. Fix the leg stiffness and the thrust cutoff so the legs carry the vehicle. Done. See below. Forces on the 500-trial run are 5.7-23.2 kN, no bottom-outs, and the engine is off at settle. The slope correlation is still absent.
+3. Rougher terrain. A 2.5 m leg span may not see this heightfield. `python -m lunar_lander.compare_roughness` rebuilds the lander on a harsher grid (crater depths times 3, medium ridges times 2) and repeats a shorter seeded campaign.
 
-With the two plausible physics confounds eliminated and the most promising analysis (partial correlation) tested directly, the correct conclusion for this experimental design, as built, is that it does not resolve site quality — the negative result stands.
+The committed probe (`docs/roughness_comparison.json`, 40 trials, seed 42) raises relief from 4.44 m to 8.77 m and the failure rate from 12.5% to 37.5%. Force-slope correlation on the harsher grid is r=0.039, p=0.85. On the nominal preset at the same sample size it is r=0.188, p=0.28. That file does not replace the 500-trial result.
 
-Hypothesis 3 has a script: `python -m lunar_lander.compare_roughness`. It rebuilds the same lander on a harsher heightfield (crater depths ×3, medium ridges ×2) and repeats a shorter seeded campaign. The committed probe (`docs/roughness_comparison.json`, 40 trials, seed 42) raises relief from 4.44 m to 8.77 m and the failure rate from 12.5% to 37.5%. The force–slope correlation does not appear (`r = 0.039`, `p = 0.85`, against `r = 0.188`, `p = 0.28` on the nominal preset at the same sample size). That file is a probe. It does not replace the 500-trial result above.
+## MINOR-2. Whole-domain tilt quoted as a slope
 
----
+`relief / width = 4.44 / 127` is about 2°. That is the end-to-end tilt of the patch. It is not a slope and it is not an average.
 
-## 🟡 MINOR-2 — Whole-domain tilt reported as a slope statistic
+Per-cell gradient: mean 6.46°, median 5.94°, p95 12.73°, max 27.77°. 63% of cells are steeper than 5°. 3.4% are steeper than the 15° tip threshold.
 
-`relief / width = 4.44 / 127 ≈ 2°` describes the end-to-end tilt of the entire terrain. It is not a slope, and it is not an average of anything.
+Using relief/width understates the terrain by more than 3x.
 
-Real per-cell gradient statistics: mean **6.46°**, median 5.94°, p95 **12.73°**, max **27.77°**, with 63% of cells above 5° and 3.4% above the 15° tip-over threshold.
+## Fixed. Landing gear could not hold the vehicle (BLOCKING-1)
 
-The substitution understates terrain difficulty by more than 3× and is easy to make by accident.
+`LEG_STIFFNESS` was 320 N/m. Trials looked successful. `peak_stroke_m` was 0.6385 m against a 0.8 m limit, so nothing in the log looked broken.
 
----
+The springs were sized on landing kinetic energy (1125 J at 1.5 m/s) and not checked at rest. Static load per leg is `F = m*g/4 = 1000*1.62/4 = 405 N`. At 320 N/m that is 1.27 m of compression. The joint only has 0.8 m.
 
-## ✅ FIXED — Landing gear could not support the vehicle at rest (BLOCKING-1)
+It did not fail at runtime because the engine was still firing at touchdown (next section). The legs never carried full weight, so the impossible compression never had to happen.
 
-**Symptom.** Leg stiffness was `LEG_STIFFNESS = 320` N/m. The lander appeared to land successfully, and `peak_stroke_m` reported 0.6385 m against a 0.8 m limit, so nothing looked wrong.
+Fix: `LEG_STIFFNESS = 3000` N/m.
 
-**Root cause.** The springs were sized on landing kinetic energy (1125 J at 1.5 m/s) without checking the static-support constraint. Static per-leg load is `F = m·g/4 = 1000×1.62/4 = 405 N`; at 320 N/m that requires **1.27 m** of spring compression against a 0.8 m joint range — physically impossible. Energy sizing alone admits arbitrarily soft springs.
-
-**Why it wasn't caught at runtime.** The engine was still firing at touchdown (see the thrust-cutoff fix below), so the legs never carried full weight and the impossible compression never had to happen.
-
-**Fix.** `LEG_STIFFNESS = 3000` N/m, satisfying both constraints:
-
-| Constraint | Requirement | Value at k=3000 |
+| Constraint | Requirement | At k=3000 |
 |---|---|---|
-| Static support | compression ≤ 20% of stroke at rest | 0.135 m (17%) |
-| Dynamic stroke | ≤ 75% of stroke at 1.5 m/s touchdown | 0.589 m (74%) |
+| Static support | compression at most 20% of stroke at rest | 0.135 m (17%) |
+| Dynamic stroke | at most 75% of stroke at 1.5 m/s | 0.589 m (74%) |
 
-Damping raised from 360 to `LEG_DAMPING = 1200` N·s/m for ζ≈0.7 (was ζ=0.21, badly under-damped):
+Damping went from 360 to `LEG_DAMPING = 1200` N s/m, about zeta 0.7. It was zeta 0.21.
 
 ```
-c = 0.7 × 2√(k · m/4) = 0.7 × 2√(3000 × 250) ≈ 1,200 N·s/m
+c = 0.7 * 2 * sqrt(k * m/4) = 0.7 * 2 * sqrt(3000 * 250) = 1200 N s/m
 ```
 
-**Regression.** `tests/test_static_equilibrium.py` asserts both constraints directly from first principles, and drops the lander with the engine off to confirm it settles without bottoming out. It's the test whose absence let 320 N/m through in the first place — it was written before this fix landed and initially failed by design.
+`tests/test_static_equilibrium.py` checks both constraints and drops the lander with the engine off. That test is what would have caught 320 N/m. It was written against the old spring and failed until the stiffness changed.
 
----
+## Fixed. Thrust never cut at touchdown (BLOCKING-2)
 
-## ✅ FIXED — Thrust was never cut at touchdown (BLOCKING-2)
+`n_bottomed_out` was 0 on all 500 trials even though BLOCKING-1 says that should have been impossible.
 
-**Symptom.** `n_bottomed_out: 0` and `bottom_out_ok: true` across all 500 trials, despite BLOCKING-1 making that impossible.
+`descent_thrust()` applied `HOVER_THRUST = m*g` on every step, including after contact. The settle check fired while the engine still held most of the weight. Legs only compressed to 0.638 m.
 
-**Root cause.** `descent_thrust()` applied `HOVER_THRUST = m·g` feed-forward on **every** step, including after contact. The settle detector fired while the engine was still holding most of the vehicle's weight, so the legs only ever compressed to 0.638 m.
+The log said landed with the engine running. Peak force and stroke were measured on a vehicle that was still being held up. The bottom-out check passed for that reason, and the forces were low.
 
-**Consequence.** The simulation declared "landed" with the engine running. Every peak-force and stroke measurement was taken from a partially supported vehicle, so the bottom-out check passed for the wrong reason and force magnitudes were understated.
+Thrust now ramps to zero over about 0.2 s once at least three footpads register contact above 1 N. The sim keeps stepping until the vehicle is sitting on its legs. This had to land after the stiffness fix. Doing it first would have bottomed out every trial on the old springs.
 
-**Fix.** Thrust ramps to zero over ~0.2 s once ≥3 footpads register contact >1 N (Apollo cut off on the same contact-probe signal), then the sim keeps stepping until the vehicle is genuinely static on its legs before evaluating settling. Ordering mattered: this had to land after BLOCKING-1, since fixing it first would have correctly caused every trial to bottom out against the undersized gear.
+On the rerun, peak forces are 5.7-23.2 kN (mean 13.1 kN), no leg bottoms out, and a single-trial check shows `ctrl=0` with total foot contact force equal to the 1,620 N static weight.
 
-**Result.** Forces are now physically real: 5.7–23.2 kN range across 500 trials (mean 13.1 kN), no bottomed-out legs, and a single-trial check confirms `ctrl=0` with total foot contact force matching the vehicle's full 1,620 N static weight at rest.
+## Fixed. Two different density-confound numbers
 
----
+`validate_results.py` reported 98.58 m. `plot_landing_zones.py` reported 11.72 m. One took `argmax` of a smoothed count field. The other called `recommended_site()` with constant forces. Those are different comparisons.
 
-## ✅ FIXED — Two disagreeing density-confound implementations
+Both scripts now import `lunar_lander.site_selection.recommended_site` and use a constant-force argmin.
 
-`validate_results.py` used to report **98.58 m**; `plot_landing_zones.py` reported **11.72 m**. One took `argmax` of a smoothed count field; the other called `recommended_site()` with constant forces — two different comparisons, not two measurements of the same thing.
+The old test also passed whenever the signal test failed. Two noisy maps being far apart is not evidence. If the signal test fails, this check is now `INCONCLUSIVE` instead of pass or fail.
 
-**Fix.** One definition (`lunar_lander.site_selection.recommended_site`, constant-force argmin), imported by both scripts.
+## Fixed. Mesh collision was the convex hull
 
-**Also fixed.** The test used to "pass" degenerately whenever the signal test failed — comparing two maps that are both noise, where a large distance between them isn't evidence of anything. It now reports `INCONCLUSIVE` instead of `PASS`/`FAIL` whenever the signal test above it fails.
+Terrain was `<geom type="mesh">`. MuJoCo mesh-mesh contact uses the convex hull, so craters were visible and not colliding. The lander touched a dome.
 
----
+There was no error. The render and the contact model were different surfaces. That is part of why the early terrain correlation was zero.
 
-## ✅ FIXED — Mesh collision was silently convex
+Switched to `<hfield>`. `python -m lunar_lander.convex_gap` writes the gap at the crater floors.
 
-The terrain was loaded as `<geom type="mesh">`. **MuJoCo evaluates mesh–mesh collision against the convex hull**, so every crater and depression was invisible to the physics engine while remaining visible in the render. The lander was touching down on a smooth dome.
+## Fixed. Peak forces were solver artifacts
 
-No error, no warning — the simulation modelled different terrain than it displayed, and this partly explains the original zero terrain correlation.
+With the undersized gear, legs hit the joint limit every trial. Reported loads of 356-1,203 kN are up to about 128 g on a 1,000 kg vehicle. The Apollo LM design limit was under 10 g. Those numbers followed `solref="0.005 1"`, not the landing gear. Changing that one solver parameter changed every published force.
 
-**Fixed** by switching to `<hfield>`, which supports exact non-convex geometry.
+Strut load now comes from the joint DOF, and a leg that reaches its stroke fails the check. Contact force is still logged, in its own column.
 
-If you take one thing from this repo: this class of bug produces plausible numbers forever. The only defense is validating outputs against physical expectations, not reading code.
+## Fixed. Mass was 960 kg, not 1,000 kg
 
----
+An explicit `<inertial mass="800">` on `lander_base` overrode the bus (400), engine (50), and tank (200) geom masses. The model was 960 kg while the docs said 1,000 kg. `diaginertia="300 300 150"` was typed in against a calculated Izz of 768.
 
-## ✅ FIXED — Peak forces were solver artifacts
-
-With under-sized gear, legs bottomed out on their joint limits every trial. Reported loads of 356–1,203 kN (up to 128 g on a 1,000 kg vehicle — Apollo LM design limit was under 10 g) were the response of `solref="0.005 1"`, not landing-gear load. Changing that one solver parameter changed every published number.
-
-**Fixed** by logging strut load from the joint DOF and asserting no leg reaches its stroke limit. Contact force is retained as a separate, clearly labelled column.
-
----
-
-## ✅ FIXED — Mass discrepancy
-
-An explicit `<inertial mass="800">` on `lander_base` silently overrode the bus (400) + engine (50) + tank (200) geom masses. Actual model mass was 960 kg while every document claimed 1,000 kg, and `diaginertia="300 300 150"` was hand-picked against a correct Izz of 768.
-
-**Fixed** by removing the `<inertial>` element and deriving mass and inertia from geometry. The check is the lander subtree mass, not `model.body_mass.sum()`: the heightfield body is assigned a huge geometry-derived mass and is not part of the lander.
+The `<inertial>` element is gone. Mass and inertia come from the geoms. The check is the lander subtree mass, not `model.body_mass.sum()`. The heightfield body gets a huge geometry mass and is not part of the lander.

@@ -8,7 +8,7 @@ validate_results.py and plot_landing_zones.py each defined their own copy
 of this (docs/known-issues.md MINOR-1), and disagreed about what the
 density-confound test should even compare against: one used a pure-density
 argmax, the other a constant-force argmin. Constant-force argmin is the
-more principled comparison — it holds the site-selection procedure fixed
+more principled comparison: it holds the site-selection procedure fixed
 and only changes the input (real per-trial force vs. an identical value
 for every trial), rather than swapping in a different procedure (raw
 density) entirely. Both scripts now import from here.
@@ -35,7 +35,7 @@ def kernel_regression_field(xs, ys, values, x_min=DOMAIN_MIN, x_max=DOMAIN_MAX,
     the local weighted mean at each cell, and valid_mask marks cells with
     enough effective samples (scipy.ndimage.gaussian_filter normalises its
     kernel to sum to 1 in pixel space, so the smoothed count is a KDE-style
-    density, not a raw count — undo that normalisation before thresholding).
+    density, not a raw count: undo that normalisation before thresholding).
     """
     xi = np.linspace(x_min, x_max, res)
     yi = np.linspace(y_min, y_max, res)

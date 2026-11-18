@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "lunar-landing-analysis"
 version = "0.3.0"
-description = "MuJoCo Monte Carlo pipeline for lunar landing site selection, with a validation suite that checks whether the result means anything"
+description = "MuJoCo Monte Carlo landings on procedural lunar terrain, with checks on the recommended site"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"

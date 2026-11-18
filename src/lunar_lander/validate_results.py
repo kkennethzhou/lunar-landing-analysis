@@ -15,14 +15,14 @@ Checks:
                        Also reports corr(force, |v_horizontal|) prominently
                        (drift speed is the leading confound candidate), and
                        a partial correlation of force~slope controlling for
-                       |v_horizontal| — drift variance may be masking a real
+                       |v_horizontal|: drift variance may be masking a real
                        terrain effect that the raw correlation can't see.
   1b. Failure vs terrain - point-biserial corr(failed, local_slope) plus
                        failure rate by slope quartile, over ALL trials (not
                        just the ones that landed safely).
   2. Density-confound test - does the recommended site move if every
                        force is replaced by a constant? Only meaningful once
-                       [1] finds a real signal — reported INCONCLUSIVE, not
+                       [1] finds a real signal: reported INCONCLUSIVE, not
                        PASS/FAIL, when it doesn't (a large distance between
                        two noise fields isn't evidence of anything).
   3. Bootstrap      - resample trials 1000x with replacement; how much
@@ -51,13 +51,11 @@ SIGNAL_R_THRESHOLD = 0.2
 DENSITY_CONFOUND_THRESHOLD_M = 5.0
 BOOTSTRAP_SPREAD_THRESHOLD_M = 15.0
 
-
 def load_terrain(preset="nominal"):
     """Height and slope from the same function that writes the MuJoCo world."""
     from lunar_lander.generate_world import make_heightmap, slope_degrees
     H = make_heightmap(preset, n=GRID)
     return H, slope_degrees(H)
-
 
 def sample_grid(field, x, y):
     ix = int(round(x))
@@ -66,11 +64,9 @@ def sample_grid(field, x, y):
     iy = min(max(iy, 0), GRID - 1)
     return field[iy, ix]
 
-
 def load_rows():
     with open(CSV_PATH) as f:
         return list(csv.DictReader(f))
-
 
 def partial_corr(x, y, controlling_for):
     """Partial correlation of x and y, controlling for z, via the standard
@@ -83,7 +79,6 @@ def partial_corr(x, y, controlling_for):
     y_resid = y - np.polyval(np.polyfit(z, y, 1), z)
     return stats.pearsonr(x_resid, y_resid)
 
-
 def main():
     rows = load_rows()
     n_total = len(rows)
@@ -92,14 +87,14 @@ def main():
     print(f"  VALIDATION REPORT  (n={n_total} trials)")
     print("=" * 70)
 
-    # ── 4. Bottom-out assertion (checked first: everything downstream is
-    #    meaningless if the legs ran out of stroke) ───────────────────────
+    # 4. Bottom-out assertion (checked first: everything downstream is
+    #    meaningless if the legs ran out of stroke)
     strokes = [float(r["peak_stroke_m"]) for r in rows]
     n_bottomed = sum(1 for s in strokes if s >= STROKE_LIMIT_M)
     print(f"\n[4] Bottom-out check: max stroke = {max(strokes):.4f} m "
           f"(limit {STROKE_LIMIT_M} m)")
     if n_bottomed > 0:
-        print(f"  FAIL: {n_bottomed}/{n_total} trials bottomed out — "
+        print(f"  FAIL: {n_bottomed}/{n_total} trials bottomed out: "
               f"forces on those trials are solver artifacts, not physical "
               f"loads. The whole pipeline is invalid until this is fixed.")
         bottom_out_ok = False
@@ -107,7 +102,7 @@ def main():
         print("  PASS: no leg bottomed out in any trial.")
         bottom_out_ok = True
 
-    # ── 5. Failure breakdown ─────────────────────────────────────────────
+    # 5. Failure breakdown
     from collections import Counter
     outcome_counts = Counter(r["outcome"] for r in rows)
     reason_counts = Counter(r["fail_reason"] for r in rows if r["fail_reason"])
@@ -118,7 +113,7 @@ def main():
 
     H, slope_deg = load_terrain()
 
-    # ── Safe-landing data for site selection / signal tests ──────────────
+    # Safe-landing data for site selection / signal tests
     safe_rows = [r for r in rows if r["outcome"] == "landed" and r["tipped"] == "0"]
     xs = np.array([float(r["x"]) for r in safe_rows])
     ys = np.array([float(r["y"]) for r in safe_rows])
@@ -131,7 +126,7 @@ def main():
     slopes_at = np.array([sample_grid(slope_deg, x, y) for x, y in zip(xs, ys)])
     elevs_at = np.array([sample_grid(H, x, y) for x, y in zip(xs, ys)])
 
-    # ── 1. Signal test ────────────────────────────────────────────────────
+    # 1. Signal test
     r_slope, p_slope = stats.pearsonr(forces, slopes_at)
     r_elev, p_elev = stats.pearsonr(forces, elevs_at)
     r_drift, p_drift = stats.pearsonr(forces, v_horiz)
@@ -139,26 +134,20 @@ def main():
     print(f"    corr(peak_strut_force, local_slope)      r={r_slope:+.4f}  p={p_slope:.4g}")
     print(f"    corr(peak_strut_force, elevation)         r={r_elev:+.4f}  p={p_elev:.4g}")
     print(f"    corr(peak_strut_force, |v_horizontal|)    r={r_drift:+.4f}  p={p_drift:.4g}"
-          f"  <- reported prominently: this is the leading confound candidate")
+          f"  (larger than the slope correlation on this run)")
     signal_ok = abs(r_slope) >= SIGNAL_R_THRESHOLD and p_slope < 0.05
     if not signal_ok:
-        print(f"  WARNING: |r|={abs(r_slope):.3f} < {SIGNAL_R_THRESHOLD} threshold "
-              f"(or p >= 0.05) — the safety map carries NO measurable terrain "
-              f"signal. The recommended landing site is NOT physically "
-              f"meaningful; it is, at best, describing where forces happened "
-              f"to be lower in this particular random sample, not a real "
-              f"terrain-dependent safety property.")
+        print(f"  WARNING: |r|={abs(r_slope):.3f} is under {SIGNAL_R_THRESHOLD} "
+              f"or p >= 0.05. Force is not correlated with slope on this run.")
     else:
         print("  PASS: force carries a statistically significant relationship "
               "with local terrain slope.")
     if abs(r_drift) > abs(r_slope):
-        print(f"  NOTE: |corr(force, |v|)|={abs(r_drift):.3f} exceeds "
-              f"|corr(force, slope)|={abs(r_slope):.3f} — on this run the "
-              f"simulation is measuring approach conditions (how fast you "
-              f"were drifting), not site quality.")
+        print(f"  NOTE: |corr(force, drift)|={abs(r_drift):.3f} is larger than "
+              f"|corr(force, slope)|={abs(r_slope):.3f}.")
 
     # Partial correlation of force~slope controlling for |v_horizontal|.
-    # Run regardless of whether the raw correlation is flat — drift variance
+    # Run regardless of whether the raw correlation is flat: drift variance
     # may be masking a real terrain effect that only shows up once removed.
     r_partial, p_partial = partial_corr(forces, slopes_at, v_horiz)
     print("\n[1a] Partial correlation (force ~ slope, controlling for |v_horizontal|):")
@@ -174,7 +163,7 @@ def main():
         print("  (Raw signal test already passed; partial correlation is "
               "reported for completeness.)")
 
-    # ── 1b. Failure vs terrain, over ALL trials (not just safe landings) ──
+    # 1b. Failure vs terrain, over ALL trials (not just safe landings)
     all_xs = np.array([float(r["x"]) for r in rows])
     all_ys = np.array([float(r["y"]) for r in rows])
     all_slopes = np.array([sample_grid(slope_deg, x, y) for x, y in zip(all_xs, all_ys)])
@@ -205,8 +194,8 @@ def main():
         print("  PASS: failure rate carries a statistically significant "
               "relationship with local terrain slope.")
 
-    # ── 2. Density-confound test ─────────────────────────────────────────
-    # Only meaningful once [1] finds a real signal — otherwise this compares
+    # 2. Density-confound test
+    # Only meaningful once [1] finds a real signal: otherwise this compares
     # two maps that are both noise, and a large distance between them proves
     # nothing about either one being meaningful.
     real_x, real_y = recommended_site(xs, ys, forces)
@@ -235,14 +224,14 @@ def main():
             confound_ok = confound_dist >= DENSITY_CONFOUND_THRESHOLD_M
             confound_verdict = "PASS" if confound_ok else "FAIL"
             if not confound_ok:
-                print(f"  WARNING: moved less than {DENSITY_CONFOUND_THRESHOLD_M} m — "
+                print(f"  WARNING: moved less than {DENSITY_CONFOUND_THRESHOLD_M} m: "
                       f"the recommended site is still substantially DENSITY-driven, "
                       f"not force-driven. Where trials happened to cluster is doing "
                       f"most of the work, not where they landed gently.")
             else:
                 print("  PASS: recommended site is not just reproducing trial density.")
 
-    # ── 3. Bootstrap stability ───────────────────────────────────────────
+    # 3. Bootstrap stability
     print("\n[3] Bootstrap (1000 resamples with replacement):")
     rng = np.random.default_rng(42)
     n = len(xs)
@@ -270,13 +259,13 @@ def main():
         bootstrap_ok = bootstrap_spread <= BOOTSTRAP_SPREAD_THRESHOLD_M
         if not bootstrap_ok:
             print(f"  WARNING: 95% region spans more than "
-                  f"{BOOTSTRAP_SPREAD_THRESHOLD_M} m — the recommended "
+                  f"{BOOTSTRAP_SPREAD_THRESHOLD_M} m: the recommended "
                   f"coordinate is not stable; a different random sample of "
                   f"trials would likely have recommended a different site.")
         else:
             print("  PASS: recommended site is reasonably stable under resampling.")
 
-    # ── Overall verdict ───────────────────────────────────────────────────
+    # Overall verdict
     overall_ok = bottom_out_ok and signal_ok and confound_ok and bootstrap_ok
     print("\n" + "=" * 70)
     print(f"  OVERALL: {'PASS' if overall_ok else 'FAIL / NOT MEANINGFUL'}")
@@ -344,7 +333,6 @@ def main():
     print("Merged into summary_stats.json")
 
     return 0 if overall_ok else 1
-
 
 if __name__ == "__main__":
     sys.exit(main())

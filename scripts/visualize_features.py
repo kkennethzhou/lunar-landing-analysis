@@ -16,7 +16,7 @@ import numpy as np
 IMG_DIR  = "./lunar_images"
 OUT_PATH = "./feature_matches.png"
 
-# Strip height to sample from each image (full strips are 52 000+ px tall —
+# Strip height to sample from each image (full strips are 52 000+ px tall;
 # crop a representative 2532×2532 window from the vertical centre so SIFT
 # doesn't run for hours and the composite is readable).
 CROP_H = 2532
@@ -24,17 +24,17 @@ CROP_H = 2532
 # FLANN / ratio-test parameters
 FLANN_TREES   = 5
 FLANN_CHECKS  = 100
-LOWE_RATIO    = 0.65    # stricter than the default 0.75 — keeps only clean matches
+LOWE_RATIO    = 0.65    # stricter than the default 0.75: keeps only clean matches
 MAX_DRAW      = 80      # cap drawn lines so the image stays legible
 
-# ── Pair selection ─────────────────────────────────────────────────────────────
+# Pair selection
 
 pngs = sorted(glob.glob(os.path.join(IMG_DIR, "*.png")))
 if len(pngs) < 2:
     sys.exit(f"Need at least 2 PNG files in {IMG_DIR}, found {len(pngs)}.")
 
 # Prefer the two images that COLMAP found most matches between:
-# M179270116LE (526 SIFT) and M179284423LE (270 SIFT) — same orbit family, 2011.
+# M179270116LE (526 SIFT) and M179284423LE (270 SIFT): same orbit family, 2011.
 preferred = ["M179270116LE.png", "M179284423LE.png"]
 selected  = []
 for name in preferred:
@@ -50,7 +50,7 @@ img_a_path, img_b_path = selected[0], selected[1]
 print(f"Image A : {os.path.basename(img_a_path)}")
 print(f"Image B : {os.path.basename(img_b_path)}")
 
-# ── Load & crop ────────────────────────────────────────────────────────────────
+# Load & crop
 
 def load_and_crop(path: str, crop_h: int) -> np.ndarray:
     img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
@@ -69,11 +69,11 @@ print("\nLoading images …")
 gray_a = load_and_crop(img_a_path, CROP_H)
 gray_b = load_and_crop(img_b_path, CROP_H)
 
-# ── SIFT detection ─────────────────────────────────────────────────────────────
+# SIFT detection
 
 print("\nDetecting SIFT keypoints …")
 sift = cv2.SIFT_create(
-    nfeatures=0,           # no hard cap — keep all
+    nfeatures=0,           # no hard cap: keep all
     nOctaveLayers=4,       # extra octave layers help on low-contrast lunar texture
     contrastThreshold=0.02,# lower than default (0.04) to catch subtle crater edges
     edgeThreshold=12,
@@ -86,9 +86,9 @@ print(f"  Image A keypoints: {len(kp_a)}")
 print(f"  Image B keypoints: {len(kp_b)}")
 
 if des_a is None or des_b is None or len(kp_a) == 0 or len(kp_b) == 0:
-    sys.exit("One or both images yielded zero descriptors — cannot match.")
+    sys.exit("One or both images yielded zero descriptors: cannot match.")
 
-# ── FLANN matching + Lowe ratio test ──────────────────────────────────────────
+# FLANN matching + Lowe ratio test
 
 print("\nMatching with FLANN …")
 index_params  = dict(algorithm=1, trees=FLANN_TREES)   # algorithm=1 → KDTREE
@@ -109,7 +109,7 @@ if len(good) == 0:
 good_sorted = sorted(good, key=lambda m: m.distance)
 draw_matches = good_sorted[:MAX_DRAW]
 
-# ── Composite image ────────────────────────────────────────────────────────────
+# Composite image
 
 print(f"\nRendering composite ({len(draw_matches)} matches drawn) …")
 
@@ -163,7 +163,7 @@ for i, m in enumerate(draw_matches):
     cv2.circle(composite, pt1, 4, col, -1, cv2.LINE_AA)
     cv2.circle(composite, pt2, 4, col, -1, cv2.LINE_AA)
 
-# ── Annotation overlay ─────────────────────────────────────────────────────────
+# Annotation overlay
 
 def put(img, text, pos, scale=0.55, color=(220, 220, 220), thickness=1):
     cv2.putText(img, text, pos, cv2.FONT_HERSHEY_SIMPLEX,
@@ -174,7 +174,7 @@ def put(img, text, pos, scale=0.55, color=(220, 220, 220), thickness=1):
 margin = 10
 put(composite, f"A: {os.path.basename(img_a_path)}", (margin, 28), color=(100, 220, 100))
 put(composite, f"B: {os.path.basename(img_b_path)}", (w_a + margin, 28), color=(100, 180, 255))
-put(composite, f"SIFT keypoints — A:{len(kp_a)}  B:{len(kp_b)}", (margin, 56))
+put(composite, f"SIFT keypoints: A:{len(kp_a)}  B:{len(kp_b)}", (margin, 56))
 put(composite, f"FLANN matches: {len(raw)} raw  →  {len(good)} (Lowe {LOWE_RATIO})  →  {len(draw_matches)} drawn",
     (margin, 80))
 put(composite, "Match quality:  GREEN = best  /  RED = weakest",

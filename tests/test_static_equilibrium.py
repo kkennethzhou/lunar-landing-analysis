@@ -27,32 +27,27 @@ STROKE_LIMIT_M = 0.8
 STATIC_LOAD_PER_LEG_N = LANDER_MASS_KG * LUNAR_GRAVITY / N_LEGS  # 405.0 N
 LEG_JOINTS = ["leg1_slide", "leg2_slide", "leg3_slide", "leg4_slide"]
 
-
 def _require_model():
     if not XML_PATH.exists():
-        pytest.skip(f"{XML_PATH.name} not found — run `make world` first")
+        pytest.skip(f"{XML_PATH.name} not found: run `make world` first")
     return mujoco.MjModel.from_xml_path(str(XML_PATH))
-
 
 def _leg_stiffness(model) -> float:
     jid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, LEG_JOINTS[0])
     return float(model.jnt_stiffness[jid])
 
-
 def _leg_damping(model) -> float:
     jid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, LEG_JOINTS[0])
     return float(model.dof_damping[model.jnt_dofadr[jid]])
 
-
-# ── Mass and gravity ─────────────────────────────────────────────────────────
-
+# Mass and gravity
 
 def _lander_subtree_mass(model) -> float:
     """Mass of lander_base + its legs, excluding the static terrain body.
 
     The terrain hfield geom has no explicit density override, so MuJoCo
     assigns it a geometry-derived mass many orders of magnitude larger than
-    the lander (tens of millions of kg) — model.body_mass.sum() over the
+    the lander (tens of millions of kg): model.body_mass.sum() over the
     WHOLE model includes that and is never close to 1000 kg. Mirrors the
     subtree filter generate_world.py itself asserts against at generation
     time.
@@ -68,7 +63,6 @@ def _lander_subtree_mass(model) -> float:
                 break
     return float(model.body_mass[sorted(set(ids))].sum())
 
-
 def test_total_mass_is_exactly_1000kg():
     """Every document claims 1,000 kg. The model must agree.
 
@@ -82,13 +76,11 @@ def test_total_mass_is_exactly_1000kg():
         f"explicit <inertial> element, it overrides geom-derived mass."
     )
 
-
 def test_gravity_is_lunar():
     model = _require_model()
     assert model.opt.gravity[2] == pytest.approx(-1.62, abs=0.01)
     assert model.opt.gravity[0] == 0.0
     assert model.opt.gravity[1] == 0.0
-
 
 def test_inertia_is_derived_not_handpicked():
     """A 2.4 x 2.4 x 1.2 m box of ~590 kg has Izz much larger than Ixx.
@@ -98,7 +90,7 @@ def test_inertia_is_derived_not_handpicked():
 
     model.body_inertia stores principal moments in eigenvalue order, not
     literally (xx, yy, zz) in the body frame (body_iquat gives the rotation
-    into that principal frame, and it's generally not the identity) — so we
+    into that principal frame, and it's generally not the identity): so we
     can't just unpack the array positionally. The lander is symmetric about
     its z-axis (four legs at symmetric corners, tank/engine on the z-axis),
     so Ixx == Iyy by construction; identify them as whichever two of the
@@ -117,9 +109,7 @@ def test_inertia_is_derived_not_handpicked():
     )
     assert ixx == pytest.approx(iyy, rel=0.15), "Ixx and Iyy should be near-symmetric"
 
-
-# ── Landing gear sizing ──────────────────────────────────────────────────────
-
+# Landing gear sizing
 
 def test_legs_support_static_weight():
     """The lander must be able to stand on its own legs.
@@ -141,7 +131,6 @@ def test_legs_support_static_weight():
         f"for a healthy 20% static margin."
     )
 
-
 def test_static_compression_leaves_stroke_margin():
     """At rest the legs should use no more than ~20% of available stroke,
     leaving the rest to absorb the landing."""
@@ -153,7 +142,6 @@ def test_static_compression_leaves_stroke_margin():
         f"Static compression uses {frac:.0%} of stroke (target <=20%). "
         f"Recommended k ~= 3000 N/m gives 17%."
     )
-
 
 def test_dynamic_stroke_fits_at_design_touchdown():
     """At the 1.5 m/s design touchdown, solve 2k*x^2 - W*x - KE = 0 for peak
@@ -168,14 +156,13 @@ def test_dynamic_stroke_fits_at_design_touchdown():
 
     assert x < STROKE_LIMIT_M, (
         f"Peak dynamic stroke {x:.3f} m at 1.5 m/s exceeds the "
-        f"{STROKE_LIMIT_M} m limit at k={k:.0f} N/m — legs bottom out and "
+        f"{STROKE_LIMIT_M} m limit at k={k:.0f} N/m: legs bottom out and "
         f"reported forces become contact-solver artifacts."
     )
     assert x / STROKE_LIMIT_M <= 0.80, (
         f"Peak dynamic stroke uses {x / STROKE_LIMIT_M:.0%} of the limit; "
         f"keep it under 80% for off-nominal margin."
     )
-
 
 def test_damping_ratio_is_near_critical():
     """zeta ~= 0.7 suppresses bounce without over-damping. Under-damped legs
@@ -190,9 +177,7 @@ def test_damping_ratio_is_near_critical():
         f"{0.7 * 2 * math.sqrt(k * LANDER_MASS_KG / N_LEGS):.0f} N*s/m."
     )
 
-
-# ── Settling behaviour ───────────────────────────────────────────────────────
-
+# Settling behaviour
 
 def _terrain_z_at(model, data, x, y):
     mujoco.mj_forward(model, data)
@@ -202,13 +187,12 @@ def _terrain_z_at(model, data, x, y):
     hit = mujoco.mj_ray(model, data, pos, vec, np.array([1, 0, 0, 0, 0, 0], dtype=np.uint8), 1, -1, geom_out)
     return (200.0 - hit) if hit >= 0 else 0.0
 
-
 def _find_flat_spawn_xy(model, data, foot_offsets, margin=15.0, domain=127.0, step=1.0):
     """Find an (x, y) where the terrain under all four feet is close to
     level, so a static-equilibrium check can assume even load sharing.
 
     The procedural terrain slopes up to ~28 degrees (docs/known-issues.md
-    MINOR-2) — most spawn points would tilt the lander onto 1-2 legs rather
+    MINOR-2): most spawn points would tilt the lander onto 1-2 legs rather
     than sharing the load evenly across all four. Terrain generation is
     fully deterministic (no RNG), so this search is stable across runs.
     """
@@ -228,7 +212,6 @@ def _find_flat_spawn_xy(model, data, foot_offsets, margin=15.0, domain=127.0, st
         x += step
     return best_xy
 
-
 @pytest.mark.slow
 def test_lander_settles_at_rest_with_engine_off():
     """Drop the lander from just above contact with zero thrust and confirm
@@ -238,11 +221,11 @@ def test_lander_settles_at_rest_with_engine_off():
     for BLOCKING-2: with thrust cut, the legs must carry full weight.
 
     The model's default spawn (from generate_world.py) is 30 m above the
-    terrain — free-falling from there under 1.62 m/s^2 gravity hits at
+    terrain: free-falling from there under 1.62 m/s^2 gravity hits at
     ~9.9 m/s, not the 1.5 m/s design touchdown, which bottoms out any leg
     stiffness regardless of whether BLOCKING-1 is fixed. Reposition to just
     above contact first, using the model's own foot geometry rather than
-    hardcoding leg dimensions, so this actually tests static settling — over
+    hardcoding leg dimensions, so this actually tests static settling: over
     a patch of terrain flat enough that all four legs actually share the
     load (checking each leg against 405/k individually only makes sense
     where the ground doesn't tilt the vehicle onto a subset of its feet).
@@ -283,7 +266,7 @@ def test_lander_settles_at_rest_with_engine_off():
     # A rigid 4-point stance is statically indeterminate: even on terrain
     # flat to ~2 cm across the footprint, the solver settles onto whichever
     # 2-3 feet end up bearing load first (the same reason a real 4-legged
-    # table wobbles rather than distributing weight evenly) — confirmed
+    # table wobbles rather than distributing weight evenly): confirmed
     # empirically here (contact forces of 43 N/45 N/385 N/765 N across the
     # four feet, despite a flat pad). So this cannot assert each leg
     # individually settles at 405/k; what must hold regardless of which
@@ -310,9 +293,7 @@ def test_lander_settles_at_rest_with_engine_off():
 
     assert abs(data.qvel[2]) < 0.02, "Lander never came to rest vertically"
 
-
-# ── Terrain collision ────────────────────────────────────────────────────────
-
+# Terrain collision
 
 def test_terrain_uses_hfield_not_mesh():
     """MuJoCo evaluates mesh-mesh collision against the CONVEX HULL, which
@@ -330,7 +311,6 @@ def test_terrain_uses_hfield_not_mesh():
         "collides against the convex hull and all concave terrain vanishes."
     )
 
-
 def test_engine_actuator_exists():
     """A landing simulation needs a descent engine. The original model had
     a decorative engine bell with contype=0 and no actuators at all."""
@@ -338,7 +318,6 @@ def test_engine_actuator_exists():
     assert model.nu >= 1, (
         "Model has no actuators. Free-fall from altitude is not a landing."
     )
-
 
 if __name__ == "__main__":
     m = _require_model()

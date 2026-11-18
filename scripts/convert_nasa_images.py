@@ -43,7 +43,7 @@ def get_label_size(data: bytes, record_bytes: int) -> int:
     params = parse_pds3_label(data)
     # ^IMAGE gives the record number (1-based) where image data starts
     image_ptr = params.get('^IMAGE', '2')
-    # May contain units like '2 <BYTES>' – extract the leading integer
+    # May contain units like '2 <BYTES>' - extract the leading integer
     image_record = int(re.match(r'\d+', image_ptr).group())
     return (image_record - 1) * record_bytes
 
@@ -83,7 +83,7 @@ def convert(img_path: str) -> str | None:
     image_bytes    = raw[offset: offset + expected_bytes]
 
     if len(image_bytes) < expected_bytes:
-        # Tolerate truncated files – pad with zeros
+        # Tolerate truncated files - pad with zeros
         image_bytes = image_bytes.ljust(expected_bytes, b'\x00')
 
     arr = np.frombuffer(image_bytes, dtype=np_dtype).reshape((lines, line_samps))

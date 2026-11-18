@@ -1,8 +1,8 @@
-# COLMAP Post-Mortem
+# COLMAP on the LROC strips
 
-Structure-from-Motion on LROC orbital imagery failed completely. This documents why, because the failure is more instructive than a success would have been.
+Structure-from-motion on these images did not produce a terrain model. This file is what was run and why it came out empty.
 
-## What was run
+## Command
 
 ```bash
 colmap automatic_reconstructor \
@@ -11,56 +11,50 @@ colmap automatic_reconstructor \
   --data_type video --quality low
 ```
 
-## What happened
+## Output
 
-- 17+ min stalled downloading a 141 MB vocabulary-tree matching file
-- ~33 min total for feature extraction and matching
-- **3 of 38 images registered. 1 point in the resulting 3D model.**
+- More than 17 minutes stalled on a 141 MB vocabulary-tree file.
+- About 33 minutes for feature extraction and matching.
+- 3 of 38 images registered. 1 point in the sparse model.
 
-Verified by parsing `colmap_workspace/sparse/0/`: `points3D.bin` contains exactly one entry.
+`colmap_workspace/sparse/0/points3D.bin` has one entry. A terrain mesh needs a lot more than that. Tuning the matcher was not going to fix it.
 
-A usable terrain model needs millions of points. This failed fundamentally, not marginally — no amount of parameter tuning was going to help.
+## Causes
 
-## Why
+### 1. The camera is a line scanner
 
-### 1. Pushbroom geometry breaks the camera model
+LROC NAC takes one 2,532-pixel line at a time while the orbiter moves, up to 52,224 lines. Each line has a different camera centre.
 
-LROC NAC is a **line scanner**. It captures one 2,532-pixel line at a time while the orbiter moves, assembling up to 52,224 lines into a strip. Every scanline has a **different camera centre**.
+COLMAP wants a pinhole camera: one centre per image. A 52,224-line strip is not one camera. ISIS3 (`jigsaw`) and the Ames Stereo Pipeline both have pushbroom models. COLMAP does not.
 
-COLMAP assumes a pinhole camera: one centre of projection per image. That assumption is not approximately violated here, it's structurally wrong. A 52,224-line strip is effectively 52,224 cameras, and no perspective camera model can describe it.
+### 2. The strips do not show the same ground
 
-Correct tools model the sensor explicitly — USGS ISIS3 (`jigsaw`), or the Ames Stereo Pipeline, both of which support pushbroom sensors.
+The 38 files are from 2011, 2012, 2015, 2019, and 2020, different orbits. Different footprints, different sun angles.
 
-### 2. The images don't overlap
+SfM needs the same features from different viewpoints. These images mostly do not overlap. Where they do, shadows from different years get detected as different terrain.
 
-The 38 strips span **2011, 2012, 2015, 2019, and 2020** across different orbits. Different ground footprints, different sun angles, different shadow directions.
+### 3. `--data_type video` was the wrong mode
 
-SfM recovers geometry by triangulating the *same* features from *different* viewpoints. These images largely don't show the same ground, and where they do, a 2011 image at one sun angle and a 2019 image at another produce shadows that feature detectors treat as different terrain.
+That mode expects sequential frames with short baselines and only matches inside a time window. Strips from different years do not have that structure. `--data_type individual` with exhaustive matching would have been the right flag. It would not have fixed causes 1 and 2.
 
-### 3. `--data_type video` was the wrong flag
+### 4. Only the left camera was downloaded
 
-It assumes sequential frames with short baselines and high overlap, restricting matching to a temporal window. Orbital strips from different years have no such structure. `--data_type individual` with exhaustive matching would have been the right call — though it wouldn't have saved the run given causes 1 and 2.
+Every product in `download_lunar.py` is an `LE` file. LROC has two NACs, left and right, with overlapping fields of view. That pair is what the instrument uses for topography. Downloading only `LE` skipped it.
 
-### 4. Only left-camera products were downloaded
+## What the simulation uses instead
 
-Every product in `download_lunar.py` is an `LE` file. LROC carries **two** NACs, left and right, with overlapping fields of view — the natural stereo pair, and the geometry the instrument was designed to exploit for topography.
+Procedural terrain. The landing trials need a surface with a known height, which the generator has. A photogrammetric mesh from this image set would not have.
 
-Downloading only `LE` removed the one configuration with a realistic chance of working.
+## If you want real topography
 
-## What was done instead
+NASA already publishes DEMs. Reconstructing them again from raw EDRs is the long way around.
 
-Pivoted to procedural terrain. The physics work doesn't require real terrain — it requires *plausible* terrain with known ground truth, which a generator provides and a photogrammetric reconstruction wouldn't have.
+- LOLA gridded topography (laser altimetry, global)
+- SLDEM2015, LOLA merged with SELENE Terrain Camera stereo, 60 m/px
+- NAC DTMs, about 2 m/px, for selected sites
 
-## What should be done for real terrain
+Any of those can replace the procedural grid in `generate_world.py`.
 
-**Don't reconstruct it — download it.** NASA publishes ready-made lunar DEMs:
+## What the log looked like
 
-- **LOLA** gridded topography (laser altimetry, global)
-- **SLDEM2015** — LOLA merged with SELENE Terrain Camera stereo, 60 m/px
-- **NAC DTMs** — ~2 m/px stereo-derived DEMs for selected sites
-
-Any of these drops straight into `generate_world.py` in place of the procedural heightfield, and would turn a methodology demonstration into an actual site study.
-
-## Takeaway
-
-The instructive part isn't that SfM failed — it's that it failed *quietly*. COLMAP ran for 33 minutes, exited without error, and produced a valid-looking sparse model directory. Only counting the points revealed that the output was empty of content.
+COLMAP ran for 33 minutes, exited without an error, and wrote a normal-looking sparse directory. The model was empty. The only check that showed it was counting the points.

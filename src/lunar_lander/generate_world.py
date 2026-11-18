@@ -23,8 +23,6 @@ from lunar_lander.paths import (
 GRID      = 128          # vertices per side
 SPACING   = 1.0         # metres between grid points  →  127 m × 127 m terrain
 
-
-
 # (cx, cy, radius, depth) in the layered_noise angle coordinates.
 CRATERS = [
     (1.1, 1.4, 0.35, 1.8),
@@ -36,7 +34,7 @@ CRATERS = [
     (6.0, 1.8, 0.28, 1.3),
 ]
 
-# ── 1. Heightmap ─────────────────────────────────────────────────────────────
+# 1. Heightmap
 
 def layered_noise(N: int, crater_scale: float = 1.0, ridge_scale: float = 1.0) -> np.ndarray:
     """
@@ -88,8 +86,7 @@ def layered_noise(N: int, crater_scale: float = 1.0, ridge_scale: float = 1.0) -
 
     return h
 
-
-# ── 2. OBJ export ────────────────────────────────────────────────────────────
+# 2. OBJ export
 
 def write_obj(path: str, H: np.ndarray, spacing: float) -> None:
     N     = H.shape[0]
@@ -133,15 +130,12 @@ def write_obj(path: str, H: np.ndarray, spacing: float) -> None:
         f.write("\n".join(lines))
         f.write("\n")
 
-
-
 PRESETS = {
     "nominal": {"crater_scale": 1.0, "ridge_scale": 1.0},
     # Deeper craters and steeper ridges for compare_roughness.py.
     # Nominal scales are exactly 1, so the shipped terrain is unchanged.
     "harsh": {"crater_scale": 3.0, "ridge_scale": 2.0},
 }
-
 
 def make_heightmap(preset: str = "nominal", n: int = GRID) -> np.ndarray:
     """Elevation grid with its minimum shifted to z=0."""
@@ -150,17 +144,14 @@ def make_heightmap(preset: str = "nominal", n: int = GRID) -> np.ndarray:
     h = layered_noise(n, **PRESETS[preset])
     return h - h.min()
 
-
 def slope_degrees(H: np.ndarray, spacing: float = SPACING) -> np.ndarray:
     """Per-cell slope in degrees from the grid gradient, not relief/width."""
     gy, gx = np.gradient(H, spacing)
     return np.degrees(np.arctan(np.hypot(gx, gy)))
 
-
 def angle_to_world(angle: float, n: int = GRID, spacing: float = SPACING) -> float:
     """Map a layered_noise angle in [0, 2 pi) to a world coordinate in metres."""
     return angle / (2.0 * math.pi) * n * spacing
-
 
 def write_heightfield_png(path: str, H: np.ndarray) -> None:
     from PIL import Image
@@ -182,7 +173,6 @@ def _subtree_ids(model, root_id):
                 ids.append(bid)
                 break
     return sorted(set(ids))
-
 
 def write_world(preset: str = "nominal", output_dir=None) -> dict:
     """Write the OBJ, the heightfield PNG, and the MJCF.
@@ -228,9 +218,9 @@ def write_world(preset: str = "nominal", output_dir=None) -> dict:
     size_mb = obj_path.stat().st_size / 1e6
     print(f"  Saved: {obj_path}  ({size_mb:.1f} MB)")
 
-    # ── 2b. Heightfield PNG for collision ───────────────────────────────────────
+    # 2b. Heightfield PNG for collision
     # MuJoCo's type="mesh" geoms collide against the mesh's CONVEX HULL, not
-    # the true (concave) surface — verified empirically: inside a crater, the
+    # the true (concave) surface: verified empirically: inside a crater, the
     # physics contact solver placed the surface ~0.5 m above the actual mesh
     # vertex height there. That silently invalidates any local-terrain-slope
     # correlation (Phase 4), since the collision surface doesn't match the
@@ -249,8 +239,7 @@ def write_world(preset: str = "nominal", output_dir=None) -> dict:
     HFIELD_ELEV_Z = relief_m
     HFIELD_BASE_Z = 1.0   # skirt thickness below z=0, closes off the collision solid
 
-
-    # ── 3. MJCF XML ──────────────────────────────────────────────────────────────
+    # 3. MJCF XML
 
     # Centre of terrain (for lander spawn)
     cx = (GRID - 1) * SPACING / 2.0
@@ -261,8 +250,8 @@ def write_world(preset: str = "nominal", output_dir=None) -> dict:
     terrain_z_at_spawn = float(H[mid, mid])
     lander_z = terrain_z_at_spawn + 30.0   # 30 m above terrain
 
-    # ── Lander mass budget ─────────────────────────────────────────────────────
-    # Target total = 1000.000 kg exactly. No <inertial> override on lander_base —
+    # Lander mass budget
+    # Target total = 1000.000 kg exactly. No <inertial> override on lander_base.
     # MuJoCo derives mass/inertia per-body from geom primitives (inertiafromgeom
     # default "auto"), which also fixes the previously wrong hand-picked yaw
     # inertia (diaginertia Izz was 5x too low for an 800 kg 2.4x2.4x1.2 m box).
@@ -274,17 +263,17 @@ def write_world(preset: str = "nominal", output_dir=None) -> dict:
     FOOT_MASS   = 10.0   # each, x4
     BUS_MASS    = 1000.0 - ENGINE_MASS - TANK_MASS - 4 * STRUT_MASS - 4 * FOOT_MASS  # 590.0
 
-    # ── Descent engine ──────────────────────────────────────────────────────────
+    # Descent engine
     # Static lunar weight = 1000 kg x 1.62 m/s^2 = 1620 N.
     # Max thrust set to ~3x static weight so the controller has authority to
     # both hover and brake a meaningful descent rate.
     ENGINE_MAX_THRUST = 5000.0   # N
 
-    # ── Landing leg spring-damper sizing (BLOCKING-1, docs/known-issues.md) ─────
+    # Landing leg spring-damper sizing (BLOCKING-1, docs/known-issues.md)
     # The previous sizing (320 N/m) was derived from landing kinetic energy
     # alone and never checked whether the legs could hold the vehicle up at
     # rest. Static per-leg load is F = m*g/4 = 1000*1.62/4 = 405 N; at 320 N/m
-    # that requires 1.27 m of spring compression against a 0.8 m stroke limit —
+    # that requires 1.27 m of spring compression against a 0.8 m stroke limit.
     # physically impossible. Both constraints below must hold simultaneously.
     #
     # Static constraint: compression at rest should use <=20% of stroke, so the
@@ -354,7 +343,7 @@ def write_world(preset: str = "nominal", output_dir=None) -> dict:
                 solimp="0.99 0.999 0.001" solref="0.02 1"/>
         </body>
 
-        <!-- ── Lunar Lander ───────────────────────────────────────────────── -->
+        <!-- Lunar lander -->
         <body name="lander_base" pos="{cx:.2f} {cy:.2f} {lander_z:.2f}">
 
           <!-- 6-DOF free joint so the lander can fall freely -->
@@ -381,11 +370,11 @@ def write_world(preset: str = "nominal", output_dir=None) -> dict:
           <!-- Descent engine thrust site: force applied along body -z -->
           <site name="engine_site" pos="0 0 -0.95" size="0.05"/>
 
-          <!-- ── 4 Landing Legs ──────────────────────────────────────────── -->
+          <!-- 4 landing legs -->
           <!-- Each leg: upper strut (rigid) + lower footpad (slide joint with
                spring-damper to simulate shock absorber)                      -->
 
-          <!-- Leg 1 – +X +Y corner -->
+          <!-- Leg 1 - +X +Y corner -->
           <body name="leg1_upper" pos="1.1 1.1 -0.6">
             <joint name="leg1_slide" type="slide" axis="0 0 -1"
                    range="0 0.8" stiffness="{LEG_STIFFNESS}" damping="{LEG_DAMPING}"/>
@@ -402,7 +391,7 @@ def write_world(preset: str = "nominal", output_dir=None) -> dict:
             </body>
           </body>
 
-          <!-- Leg 2 – -X +Y corner -->
+          <!-- Leg 2 - -X +Y corner -->
           <body name="leg2_upper" pos="-1.1 1.1 -0.6">
             <joint name="leg2_slide" type="slide" axis="0 0 -1"
                    range="0 0.8" stiffness="{LEG_STIFFNESS}" damping="{LEG_DAMPING}"/>
@@ -419,7 +408,7 @@ def write_world(preset: str = "nominal", output_dir=None) -> dict:
             </body>
           </body>
 
-          <!-- Leg 3 – -X -Y corner -->
+          <!-- Leg 3 - -X -Y corner -->
           <body name="leg3_upper" pos="-1.1 -1.1 -0.6">
             <joint name="leg3_slide" type="slide" axis="0 0 -1"
                    range="0 0.8" stiffness="{LEG_STIFFNESS}" damping="{LEG_DAMPING}"/>
@@ -436,7 +425,7 @@ def write_world(preset: str = "nominal", output_dir=None) -> dict:
             </body>
           </body>
 
-          <!-- Leg 4 – +X -Y corner -->
+          <!-- Leg 4 - +X -Y corner -->
           <body name="leg4_upper" pos="1.1 -1.1 -0.6">
             <joint name="leg4_slide" type="slide" axis="0 0 -1"
                    range="0 0.8" stiffness="{LEG_STIFFNESS}" damping="{LEG_DAMPING}"/>
@@ -483,59 +472,46 @@ def write_world(preset: str = "nominal", output_dir=None) -> dict:
         f.write(xml)
     print(f"  Saved: {xml_path}")
 
-    # ── 4. Verify total mass ═════════════════════════════════════════════════════
+    # 4. Verify total mass
 
     model = mujoco.MjModel.from_xml_path(str(xml_path))
 
     # Sum mass over the lander's kinematic subtree only (lander_base + legs).
     # model.body_mass.sum() over the WHOLE model also includes the static
     # terrain body, whose mesh geom has no explicit density and is therefore
-    # many orders of magnitude heavier — not part of the "lander mass" spec.
+    # many orders of magnitude heavier: not part of the "lander mass" spec.
     _lander_root = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "lander_base")
-
 
     _lander_body_ids = _subtree_ids(model, _lander_root)
     total_mass = float(model.body_mass[_lander_body_ids].sum())
     print(f"  Verifying total lander mass (lander_base + legs subtree): {total_mass:.6f} kg")
     assert abs(total_mass - 1000.0) < 1e-6, (
-        f"Total lander mass {total_mass:.6f} kg != 1000.000 kg — mass budget is wrong"
+        f"Total lander mass {total_mass:.6f} kg != 1000.000 kg: mass budget is wrong"
     )
-    print("  ✓ Mass assertion passed: lander subtree mass == 1000.000 kg")
+    print("   Mass assertion passed: lander subtree mass == 1000.000 kg")
 
     # 8-bit PNG: pixel 0 maps to z=0 and pixel 255 maps to the relief.
     hfield_quantization_m = float(relief_m / 255.0) if relief_m > 0 else 0.0
 
-    # ── 5. Summary ───────────────────────────────────────────────────────────────
+    # 5. Summary
 
     total_verts = GRID * GRID
     total_faces = (GRID - 1) * (GRID - 1) * 2
 
-    print(f"""
-    ╔══════════════════════════════════════════════════╗
-    ║         World Generation Complete                ║
-    ╠══════════════════════════════════════════════════╣
-    ║  Terrain grid    : {GRID}×{GRID} vertices             ║
-    ║  Total vertices  : {total_verts:,}                      ║
-    ║  Total triangles : {total_faces:,}                      ║
-    ║  Z range         : {H.min():.2f} – {H.max():.2f} m              ║
-    ║  Craters         : 7                            ║
-    ║  Boulder bumps   : 4                            ║
-    ╠══════════════════════════════════════════════════╣
-    ║  Lander spawn    : ({cx:.1f}, {cy:.1f}, {lander_z:.1f}) m    ║
-    ║  Lander mass     : {total_mass:.3f} kg (verified, body + legs)  ║
-    ║  Moon gravity    : -1.62 m/s²                   ║
-    ║  Leg stiffness   : {LEG_STIFFNESS} N/m                    ║
-    ║  Leg damping     : {LEG_DAMPING} N·s/m                  ║
-    ║  Engine max thrust: {ENGINE_MAX_THRUST:.0f} N                  ║
-    ╠══════════════════════════════════════════════════╣
-    ║  OBJ  → {obj_path}
-    ║  MJCF → {xml_path}
-    ╚══════════════════════════════════════════════════╝
+    print("World written")
+    print(f"  grid: {GRID}x{GRID} vertices, {total_verts:,} verts, {total_faces:,} triangles")
+    print(f"  z range: {H.min():.2f} to {H.max():.2f} m")
+    print("  craters: 7, boulders: 4")
+    print(f"  spawn: ({cx:.1f}, {cy:.1f}, {lander_z:.1f}) m")
+    print(f"  lander mass: {total_mass:.3f} kg")
+    print("  gravity: -1.62 m/s^2")
+    print(f"  leg stiffness: {LEG_STIFFNESS} N/m, damping: {LEG_DAMPING} N s/m")
+    print(f"  engine max thrust: {ENGINE_MAX_THRUST:.0f} N")
+    print(f"  OBJ: {obj_path}")
+    print(f"  MJCF: {xml_path}")
+    print(f"  heightfield PNG: 256 levels ({hfield_quantization_m * 100:.2f} cm per level)")
 
-    Heightfield PNG uses 256 levels ({hfield_quantization_m * 100:.2f} cm per level).
-    """)
-
-    # ── 6. Terrain stats for downstream scripts (summary_stats.json) ────────────
+    # 6. Terrain stats for downstream scripts (summary_stats.json)
 
     TERRAIN_STATS = dict(
         relief_m=relief_m,
@@ -584,7 +560,6 @@ def main(argv=None):
         merge_summary_stats(stats)
         print("  Merged into summary_stats.json")
     return stats
-
 
 if __name__ == "__main__":
     main()

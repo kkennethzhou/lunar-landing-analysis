@@ -1,10 +1,8 @@
-"""
-Centralised output paths.
+"""Output paths.
 
 Modules used to build paths with `os.path.dirname(__file__)`, which wrote
-results.csv and *_stats.json into the source tree. Once the package is
-pip-installed that becomes the site-packages directory — writable on some
-systems, read-only on others, and wrong on all of them.
+results.csv and the stats JSON into the source tree. After a pip install
+that directory is site-packages, which is the wrong place for results.
 
 Everything is written under a project-root `output/` directory instead,
 overridable with the LUNAR_OUTPUT_DIR environment variable.
@@ -41,7 +39,7 @@ HEIGHTFIELD_PATH = MESH_DIR / "lunar_heightfield.png"
 # Results
 RESULTS_CSV = OUTPUT_DIR / "results.csv"
 
-# Stats — every reported number lives in one of these
+# Stats: every reported number lives in one of these
 SUMMARY_STATS = OUTPUT_DIR / "summary_stats.json"
 TERRAIN_STATS = OUTPUT_DIR / "terrain_stats.json"
 VALIDATION_STATS = OUTPUT_DIR / "validation_stats.json"

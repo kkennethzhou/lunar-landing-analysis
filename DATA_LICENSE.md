@@ -1,40 +1,36 @@
-# Data Licensing & Provenance
+# Data licensing and provenance
 
 ## Code
 
-MIT — see [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).
 
 ## NASA LROC imagery
 
-The imagery this project references comes from the **Lunar Reconnaissance Orbiter Camera (LROC) Narrow Angle Camera**, distributed through the NASA Planetary Data System.
+The images referenced here are from the Lunar Reconnaissance Orbiter Camera (LROC) Narrow Angle Camera, distributed by the NASA Planetary Data System.
 
-**These files are not redistributed in this repository.** They total ~1.9 GB and are excluded via `.gitignore`. Regenerate them:
+They are not in this repository. The set is about 1.9 GB and is listed in `.gitignore`. To fetch them:
 
 ```bash
 python scripts/download_lunar.py
 python scripts/convert_nasa_images.py
 ```
 
-**Status.** NASA data is generally not subject to copyright in the United States and may be used without restriction. NASA nonetheless requests acknowledgement, and the LROC team asks that publications cite the instrument paper.
+NASA data is generally not copyrighted in the United States and can be used freely. NASA asks for an acknowledgement, and the LROC team asks publications to cite the instrument paper.
 
-**Attribution:**
+Attribution: NASA/GSFC/Arizona State University.
 
-> NASA/GSFC/Arizona State University
+Instrument paper: Robinson, M. S., et al. (2010). Lunar Reconnaissance Orbiter Camera (LROC) Instrument Overview. Space Science Reviews, 150(1-4), 81-124.
 
-**Instrument citation:**
+Archive: [PDS Imaging Node](https://pds-imaging.jpl.nasa.gov/), dataset `LRO-L-LROC-2-EDR-V1.0`.
 
-> Robinson, M. S., et al. (2010). Lunar Reconnaissance Orbiter Camera (LROC) Instrument Overview. *Space Science Reviews*, 150(1–4), 81–124.
+Products used are Left NAC (`LE`) EDR strips from 2011-2020. The list is in `scripts/download_lunar.py`.
 
-**Archive:** [PDS Imaging Node](https://pds-imaging.jpl.nasa.gov/) · dataset `LRO-L-LROC-2-EDR-V1.0`
+## Generated files
 
-Products used are Left NAC (`LE`) EDR strips spanning 2011–2020; the manifest is in `scripts/download_lunar.py`.
+Procedural terrain, simulation results, and figures are produced by this code and are under the MIT license. `make all` regenerates the figures from `seed = 42`.
 
-## Generated artifacts
+## Other software
 
-Procedural terrain, simulation results, and figures are produced by this repository's code and fall under the MIT license. All are regenerable — `make all` reproduces every figure deterministically from `seed = 42`.
-
-## Third-party software
-
-- **MuJoCo** — Apache 2.0, DeepMind
-- **COLMAP** — BSD, Johannes Schönberger et al.
-- **NumPy / SciPy / Matplotlib** — BSD-style
+- MuJoCo, Apache 2.0, DeepMind
+- COLMAP, BSD, Johannes Schönberger et al.
+- NumPy, SciPy, and Matplotlib, BSD-style licenses
