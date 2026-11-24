@@ -17,6 +17,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install system libraries
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libgl1 libglib2.0-0 libosmesa6
+
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
