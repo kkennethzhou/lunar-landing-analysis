@@ -44,7 +44,7 @@ These showed up by checking the outputs against a hand calculation.
 
 **Reported peak forces were solver output.** With the old soft legs, every trial hit the joint limit. Loads of 356-1,203 kN came from `solref="0.005 1"`. Changing that parameter changed the published numbers. Strut load is now read from the joint, and a trial that reaches the stroke limit fails the bottom-out check.
 
-**The legs could not hold the lander at rest.** Stiffness was 320 N/m, sized from impact energy only. Static load is `1000 * 1.62 / 4 = 405 N` per leg, which needs 1.27 m of compression. Stroke is 0.8 m. Stiffness is now 3,000 N/m. Static compression is 0.135 m. At 1.5 m/s the estimated stroke is 0.589 m.
+**The legs could not hold the lander at rest.** Stiffness was 320 N/m, sized from impact energy only. Static load is `1000 * 1.62 / 4 = 405 N` per leg, which needs 1.27 m of compression. Stroke is 0.8 m. Stiffness is now 3,000 N/m and damping is 1,200 N·s/m. The slide axis was `0 0 -1`, so increasing q extended the foot and the spring force was zero with the vehicle parked. The axis is now `0 0 1`: q = 0 is the extended leg, positive q compresses it, and the spring pushes the bus up. The spring sits above the strut and foot, so it carries the 840 kg bus, engine, and tank. Parked sag on flat ground is 0.113 m. Charging each spring with the full 405 N is 0.135 m, still inside the 0.8 m stop.
 
 **Thrust stayed on after contact.** The controller kept applying `m*g` after the feet touched, so the "landed" flag fired while the engine was still holding most of the weight. Thrust now ramps to zero over 0.2 s once at least three feet see contact.
 
@@ -106,7 +106,7 @@ The density test is inconclusive on purpose. If both maps are noise, the distanc
 
 Full notes: [docs/known-issues.md](docs/known-issues.md).
 
-Landing gear is 3,000 N/m, up from 320 N/m. Thrust cuts at touchdown. Drift is still the main correlate of landing force (r=+0.525). Rougher terrain is the remaining thing to try. The 40-trial probe above made more trials fail and did not create a slope correlation. See OPEN-1.
+Landing gear is 3,000 N/m, up from 320 N/m, and the slide axis points up so compression loads the spring. Thrust cuts at touchdown. Drift is still the main correlate of landing force (r=+0.525). Rougher terrain is the remaining thing to try. The 40-trial probe above made more trials fail and did not create a slope correlation. See OPEN-1.
 
 ## Layout
 
