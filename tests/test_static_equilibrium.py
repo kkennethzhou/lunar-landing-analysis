@@ -111,6 +111,34 @@ def test_inertia_is_derived_not_handpicked():
 
 # Landing gear sizing
 
+def test_slide_axis_compresses_the_leg():
+    """Positive q must move the foot up. A downward axis unloads the spring at rest."""
+    model = _require_model()
+    for name in LEG_JOINTS:
+        jid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, name)
+        axis = model.jnt_axis[jid]
+        assert float(axis[2]) > 0.0, (
+            f"{name} axis is {axis.tolist()}. Positive q has to compress the "
+            f"leg. A downward axis leaves the vehicle sitting on the q=0 stop "
+            f"with zero spring force, at any stiffness."
+        )
+
+def test_springs_hold_weight_before_the_stop():
+    """At full stroke the four springs together must already exceed lunar weight."""
+    model = _require_model()
+    total = 0.0
+    for name in LEG_JOINTS:
+        jid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, name)
+        k = float(model.jnt_stiffness[jid])
+        springref = float(model.qpos_spring[model.jnt_qposadr[jid]])
+        q_stop = float(model.jnt_range[jid, 1])
+        total += k * (q_stop - springref)
+    weight = LANDER_MASS_KG * LUNAR_GRAVITY
+    assert total >= weight, (
+        f"At full stroke the springs supply {total:.0f} N, under the "
+        f"{weight:.0f} N lunar weight. The lander sits on the joint limits."
+    )
+
 def test_legs_support_static_weight():
     """The lander must be able to stand on its own legs.
 

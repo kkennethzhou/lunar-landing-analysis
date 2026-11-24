@@ -295,6 +295,10 @@ def write_world(preset: str = "nominal", output_dir=None) -> dict:
     # (near-critical: suppresses rebound/tip-over without over-damping):
     #   c = 0.7 * 2*sqrt(k * m_eff) = 0.7*2*sqrt(3000*250) = 1212 N.s/m -> 1200
     #
+    # Slide axis is +Z. q = 0 is the extended leg and positive q compresses
+    # it, so the spring pushes the bus up. A downward axis puts the 0.8 m of
+    # travel on the extension side and the spring force is zero at rest.
+    #
     # Regression: tests/test_static_equilibrium.py asserts both constraints
     # directly and drops the lander with the engine off to confirm each leg
     # settles at 405/k without bottoming out. It's the test whose absence let
@@ -376,7 +380,7 @@ def write_world(preset: str = "nominal", output_dir=None) -> dict:
 
           <!-- Leg 1 - +X +Y corner -->
           <body name="leg1_upper" pos="1.1 1.1 -0.6">
-            <joint name="leg1_slide" type="slide" axis="0 0 -1"
+            <joint name="leg1_slide" type="slide" axis="0 0 1"
                    range="0 0.8" stiffness="{LEG_STIFFNESS}" damping="{LEG_DAMPING}"/>
             <geom name="leg1_strut" type="capsule"
                   fromto="0 0 0  0.9 0.9 -1.4" size="0.06"
@@ -393,7 +397,7 @@ def write_world(preset: str = "nominal", output_dir=None) -> dict:
 
           <!-- Leg 2 - -X +Y corner -->
           <body name="leg2_upper" pos="-1.1 1.1 -0.6">
-            <joint name="leg2_slide" type="slide" axis="0 0 -1"
+            <joint name="leg2_slide" type="slide" axis="0 0 1"
                    range="0 0.8" stiffness="{LEG_STIFFNESS}" damping="{LEG_DAMPING}"/>
             <geom name="leg2_strut" type="capsule"
                   fromto="0 0 0  -0.9 0.9 -1.4" size="0.06"
@@ -410,7 +414,7 @@ def write_world(preset: str = "nominal", output_dir=None) -> dict:
 
           <!-- Leg 3 - -X -Y corner -->
           <body name="leg3_upper" pos="-1.1 -1.1 -0.6">
-            <joint name="leg3_slide" type="slide" axis="0 0 -1"
+            <joint name="leg3_slide" type="slide" axis="0 0 1"
                    range="0 0.8" stiffness="{LEG_STIFFNESS}" damping="{LEG_DAMPING}"/>
             <geom name="leg3_strut" type="capsule"
                   fromto="0 0 0  -0.9 -0.9 -1.4" size="0.06"
@@ -427,7 +431,7 @@ def write_world(preset: str = "nominal", output_dir=None) -> dict:
 
           <!-- Leg 4 - +X -Y corner -->
           <body name="leg4_upper" pos="1.1 -1.1 -0.6">
-            <joint name="leg4_slide" type="slide" axis="0 0 -1"
+            <joint name="leg4_slide" type="slide" axis="0 0 1"
                    range="0 0.8" stiffness="{LEG_STIFFNESS}" damping="{LEG_DAMPING}"/>
             <geom name="leg4_strut" type="capsule"
                   fromto="0 0 0  0.9 -0.9 -1.4" size="0.06"
