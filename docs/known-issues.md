@@ -1,38 +1,40 @@
 # Known issues
 
-Current as of the 0.3.0 release. Both blocking defects from the previous round are fixed. The open question, whether a terrain signal shows up once the physics is fixed, has been run. It does not.
+Current as of the 0.4.0 release. Both blocking defects are fixed, including the slide axis, which used to extend the leg under load. The open question, whether a terrain signal shows up once the physics is fixed, has been run again on that model. It does not.
 
 ## OPEN-1. No terrain signal in the safety map
 
 The recommended landing coordinate is not statistically defensible.
 
-Evidence from 500 trials, seed 42, 15.6% not landed, with both blocking fixes in:
+Evidence from 500 trials, seed 42, on the compression legs. 405 landed, 91 tipped, 4 timed out (19.0% not landed). Recorded in `docs/summary_stats.json`.
 
 ```
-corr(force, local_slope)                  = +0.025  (p = 0.61)
-corr(force, elevation)                    = -0.022  (p = 0.65)
-corr(force, |v_horizontal|)               = +0.525  (p = 3e-31)
-corr(force, local_slope | |v_horizontal|) = +0.005  (p = 0.92)
-corr(failed, local_slope)                 = +0.070  (p = 0.12)
+corr(force, local_slope)                  = +0.060  (p = 0.23)
+corr(force, elevation)                    = -0.013  (p = 0.80)
+corr(force, |v_horizontal|)               = +0.539  (p = 7e-32)
+corr(force, local_slope | |v_horizontal|) = +0.041  (p = 0.41)
+corr(failed, local_slope)                 = +0.099  (p = 0.027)
 ```
+
+The failure correlation has p under 0.05 and `|r|` under the 0.2 bar the validator requires, so that check still fails.
 
 Failure rate by slope quartile:
 
 | Slope range | Failure rate |
 |---|---|
-| 0.4-3.8° | 14.4% |
+| 0.4-3.8° | 17.6% |
 | 3.8-5.9° | 16.8% |
-| 5.9-8.1° | 14.4% |
-| 8.1-21.6° | 16.8% |
+| 5.9-8.1° | 19.2% |
+| 8.1-21.6° | 22.4% |
 
-Bootstrap 95% spread on the recommended coordinate: 58.4 m across a 97 m domain.
+Bootstrap 95% spread on the recommended coordinate: 55.0 m across a 97 m domain.
 
 The simulation is mostly measuring approach conditions. A coordinate pulled out of this map is where the trials happened to cluster.
 
 Three follow-ups were listed before this release:
 
-1. Partial correlation of force against slope, controlling for `|v|`. Tested. r=+0.005, p=0.92. Flatter than the raw correlation.
-2. Fix the leg stiffness and the thrust cutoff so the legs carry the vehicle. Done. See below. Forces on the 500-trial run are 5.7-23.2 kN, no bottom-outs, and the engine is off at settle. The slope correlation is still absent.
+1. Partial correlation of force against slope, controlling for `|v|`. Tested on the compression-leg campaign. r=+0.041, p=0.41. Flatter than the raw correlation.
+2. Fix the leg stiffness, the slide axis, and the thrust cutoff so the legs carry the vehicle. Done. See below. Peak strut force on the 500-trial run is 6.0-23.4 kN (mean 13.2 kN). Maximum stroke is 0.797 m. No leg bottomed out. The slope correlation is still absent.
 3. Rougher terrain. A 2.5 m leg span may not see this heightfield. `python -m lunar_lander.compare_roughness` rebuilds the lander on a harsher grid (crater depths times 3, medium ridges times 2) and repeats a shorter seeded campaign.
 
 The committed probe (`docs/roughness_comparison.json`, 40 trials, seed 42) raises relief from 4.44 m to 8.77 m and the failure rate from 12.5% to 37.5%. Force-slope correlation on the harsher grid is r=0.039, p=0.85. On the nominal preset at the same sample size it is r=0.188, p=0.28. That file does not replace the 500-trial result.
@@ -53,7 +55,7 @@ The springs were sized on landing kinetic energy (1125 J at 1.5 m/s) and not che
 
 It did not fail at runtime because the engine was still firing at touchdown (next section). The legs never carried full weight, so the impossible compression never had to happen.
 
-Fix: `LEG_STIFFNESS = 3000` N/m.
+Fix: `LEG_STIFFNESS = 3000` N/m. The slide axis was also `0 0 -1`, so positive q extended the foot and the spring force was zero with the vehicle parked. Raising k did not create a ride height until the axis became `0 0 1`. q = 0 is the extended leg, positive q compresses it, and the spring pushes the bus up.
 
 | Constraint | Requirement | At k=3000 |
 |---|---|---|
@@ -78,7 +80,7 @@ The log said landed with the engine running. Peak force and stroke were measured
 
 Thrust now ramps to zero over about 0.2 s once at least three footpads register contact above 1 N. The sim keeps stepping until the vehicle is sitting on its legs. This had to land after the stiffness fix. Doing it first would have bottomed out every trial on the old springs.
 
-On the rerun, peak forces are 5.7-23.2 kN (mean 13.1 kN), no leg bottoms out, and a single-trial check shows `ctrl=0` with total foot contact force equal to the 1,620 N static weight.
+On the 500-trial rerun with the compression legs, peak strut force is 6.0-23.4 kN (mean 13.2 kN) and the maximum stroke is 0.797 m. No leg bottoms out. Thrust is off once the vehicle has settled.
 
 ## Fixed. Two different density-confound numbers
 

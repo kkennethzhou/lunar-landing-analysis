@@ -19,18 +19,18 @@ From there:
 
 ## Result
 
-500 trials, seed 42, 15.6% not landed. Legs did not bottom out (max stroke 0.144 m of 0.8 m). Thrust is cut at touchdown.
+500 trials, seed 42, on the compression legs (slide axis `0 0 1`, 3,000 N/m). 405 landed, 91 tipped, 4 timed out (19.0% not landed). No leg bottomed out (max stroke 0.797 m of 0.8 m). Thrust is cut at touchdown. The record is `docs/summary_stats.json`.
 
 ```
-corr(peak_leg_force, local_terrain_slope)                     = +0.025  (p = 0.61)
-corr(peak_leg_force, horizontal_drift)                        = +0.525  (p = 3e-31)
-corr(peak_leg_force, local_terrain_slope | horizontal_drift)  = +0.005  (p = 0.92)
-corr(trial_failed, local_terrain_slope)                       = +0.070  (p = 0.12)
+corr(peak_leg_force, local_terrain_slope)                     = +0.060  (p = 0.23)
+corr(peak_leg_force, horizontal_drift)                        = +0.539  (p = 7e-32)
+corr(peak_leg_force, local_terrain_slope | horizontal_drift)  = +0.041  (p = 0.41)
+corr(trial_failed, local_terrain_slope)                       = +0.099  (p = 0.027)
 ```
 
 Landing force tracks drift speed. It does not track where the lander touched down. Controlling for drift does not uncover a slope effect. The partial correlation is flatter than the raw one.
 
-Bootstrap resampling moves the recommended coordinate by 58.4 m (95% spread) inside a 97 m spawn window. The heatmap is a smooth picture of noise.
+Bootstrap resampling moves the recommended coordinate by 55.0 m (95% spread) inside a 97 m spawn window. The heatmap is a smooth picture of noise.
 
 A 40-trial probe on a rougher preset (relief 8.77 m instead of 4.44 m) raises the failure rate from 12.5% to 37.5% and still has no force-slope correlation (`docs/roughness_comparison.json`). That file is a short probe. The 500-trial numbers above are the campaign result.
 
@@ -93,12 +93,12 @@ The simulation does not read them. They document the reconstruction attempt.
 
 | Check | Question | Result |
 |---|---|---|
-| Signal | Does landing force correlate with slope? | fail, r=+0.025, p=0.61 |
-| Partial correlation | Does controlling for drift reveal a slope effect? | fail, r=+0.005, p=0.92 |
-| Failure vs terrain | Do failures track slope? | fail, r=+0.070, p=0.12 |
+| Signal | Does landing force correlate with slope? | fail, r=+0.060, p=0.23 |
+| Partial correlation | Does controlling for drift reveal a slope effect? | fail, r=+0.041, p=0.41 |
+| Failure vs terrain | Do failures track slope? | fail, r=+0.099, p=0.027, under the \|r\|=0.2 bar |
 | Density confound | Does the site move if every force is replaced by a constant? | inconclusive, because the signal test failed |
-| Bootstrap | Is the recommended site stable? | fail, 58.4 m spread |
-| Bottom-out | Did any leg hit the stroke limit? | pass, max 0.144 m of 0.8 m, engine off |
+| Bootstrap | Is the recommended site stable? | fail, 55.0 m spread |
+| Bottom-out | Did any leg hit the stroke limit? | pass, max 0.797 m of 0.8 m |
 
 The density test is inconclusive on purpose. If both maps are noise, the distance between them does not mean anything. It only counts once the signal test passes.
 
@@ -106,7 +106,7 @@ The density test is inconclusive on purpose. If both maps are noise, the distanc
 
 Full notes: [docs/known-issues.md](docs/known-issues.md).
 
-Landing gear is 3,000 N/m, up from 320 N/m, and the slide axis points up so compression loads the spring. Thrust cuts at touchdown. Drift is still the main correlate of landing force (r=+0.525). Rougher terrain is the remaining thing to try. The 40-trial probe above made more trials fail and did not create a slope correlation. See OPEN-1.
+Landing gear is 3,000 N/m, up from 320 N/m, and the slide axis points up so compression loads the spring. Thrust cuts at touchdown. Drift is still the main correlate of landing force (r=+0.539). Rougher terrain is the remaining thing to try. The 40-trial probe above made more trials fail and did not create a slope correlation. See OPEN-1.
 
 ## Layout
 

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lunar-landing-analysis"
-version = "0.3.0"
+version = "0.4.0"
 description = "MuJoCo Monte Carlo landings on procedural lunar terrain, with checks on the recommended site"
 readme = "README.md"
 requires-python = ">=3.10"

@@ -70,7 +70,7 @@ The legs have to meet two constraints:
 - Static: `405 N / k <= 0.2 * 0.8 m`, so `k >= 2,500 N/m`
 - Dynamic: solve `2k*x^2 - W*x - KE = 0` at 1.5 m/s, with `x <= 0.6 m`
 
-Shipped stiffness is 3,000 N/m. Damping is 1,200 N s/m. The old 320 N/m spring could not hold the lander inside the stroke. See BLOCKING-1 in [known-issues.md](known-issues.md).
+Shipped stiffness is 3,000 N/m. Damping is 1,200 N s/m. The slide axis is `0 0 1`: positive q compresses the leg. The old 320 N/m spring, on a downward axis, could not hold the lander inside the stroke. See BLOCKING-1 in [known-issues.md](known-issues.md).
 
 ## 5. Descent control
 
@@ -93,7 +93,7 @@ A trial fails on tilt over 15°, leg force over 50 kN, stroke at the 0.8 m limit
 
 A landing counts if at least 3 footpads stay in contact above 1 N for 150 consecutive steps, with `|vz| < 0.02` m/s and `|vx|`, `|vy| < 0.05` m/s.
 
-From `output/summary_stats.json`: 422 landed, 43 tipped, 16 over acceleration, 19 timeouts (15.6% not landed). Peak stroke 0.144 m.
+From `docs/summary_stats.json`, the same file the pipeline writes to `output/summary_stats.json`: 405 landed, 91 tipped, 4 timeouts (19.0% not landed). Peak stroke 0.797 m. No trial exceeded the acceleration limit.
 
 `python -m lunar_lander.compare_roughness` reruns a shorter campaign on a deeper crater field and writes `docs/roughness_comparison.json`. It does not replace the 500-trial result.
 
