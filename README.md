@@ -68,6 +68,10 @@ python -m lunar_lander.validate_results
 
 python -m lunar_lander.convex_gap
 python -m lunar_lander.compare_roughness --trials 40
+
+# OPEN-1 follow-up (isolated output/open1/; does not overwrite published docs/)
+python -m lunar_lander.open1_campaigns --trials 2   # smoke
+python -m lunar_lander.open1_campaigns --trials 500 # full campaigns
 ```
 
 Runs are deterministic from `seed = 42`. No GPU. A 500-trial run is about 10 minutes on an M-series Mac.
@@ -119,6 +123,8 @@ src/lunar_lander/
   site_selection.py       shared regression
   convex_gap.py           hull vs heightfield at crater floors
   compare_roughness.py    short rerun on a rougher preset
+  open1_campaigns.py      OPEN-1 isolated 500-trial experiments (issue #3)
+  terrain_metrics.py      slope/roughness at spawn, touchdown, and feet
   interactive_landing.py  viewer
   paths.py                output paths
   summary_stats.py        numbers the docs quote

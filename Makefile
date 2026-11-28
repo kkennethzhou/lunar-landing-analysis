@@ -1,4 +1,4 @@
-.PHONY: help install world simulate plot validate all test lint clean
+.PHONY: help install world simulate plot validate all test lint clean open1 open1-smoke
 
 help:
 	@echo "make install   - install package + dev dependencies"
@@ -7,6 +7,8 @@ help:
 	@echo "make simulate  - run Monte Carlo trials"
 	@echo "make plot      - build safety map"
 	@echo "make validate  - run the four validation checks"
+	@echo "make open1     - OPEN-1 500-trial campaigns into output/open1/"
+	@echo "make open1-smoke - OPEN-1 2-trial smoke into output/open1/"
 	@echo "make test      - pytest"
 	@echo "make lint      - ruff"
 	@echo "make clean     - remove generated artifacts"
@@ -25,6 +27,12 @@ plot: simulate
 
 validate: plot
 	python -m lunar_lander.validate_results
+
+open1:
+	python -m lunar_lander.open1_campaigns --trials 500 --seed 42
+
+open1-smoke:
+	python -m lunar_lander.open1_campaigns --trials 2 --seed 42
 
 all: validate
 	@echo ""

@@ -17,6 +17,8 @@ Checks:
                        a partial correlation of force~slope controlling for
                        |v_horizontal|: drift variance may be masking a real
                        terrain effect that the raw correlation can't see.
+                       OPEN-1: also reports the same correlations at
+                       touchdown and under the feet when those columns exist.
   1b. Failure vs terrain - point-biserial corr(failed, local_slope) plus
                        failure rate by slope quartile, over ALL trials (not
                        just the ones that landed safely).
@@ -32,10 +34,15 @@ Checks:
   5. Failure breakdown by reason.
 """
 
+from __future__ import annotations
+
+import argparse
 import csv
 import json
 import math
 import sys
+from collections import Counter
+from pathlib import Path
 
 import numpy as np
 from scipy import stats
@@ -43,6 +50,15 @@ from scipy import stats
 from lunar_lander.paths import RESULTS_CSV as CSV_PATH
 from lunar_lander.paths import VALIDATION_STATS as STATS_OUT_PATH
 from lunar_lander.site_selection import recommended_site
+from lunar_lander.terrain_metrics import (
+    feet_terrain,
+    foot_xy_from_row,
+    local_roughness,
+    row_has_touchdown,
+    sample_grid,
+    spawn_touchdown_offset_m,
+    touchdown_xy,
+)
 
 STROKE_LIMIT_M = 0.8
 GRID = 128
@@ -51,22 +67,18 @@ SIGNAL_R_THRESHOLD = 0.2
 DENSITY_CONFOUND_THRESHOLD_M = 5.0
 BOOTSTRAP_SPREAD_THRESHOLD_M = 15.0
 
+
 def load_terrain(preset="nominal"):
     """Height and slope from the same function that writes the MuJoCo world."""
     from lunar_lander.generate_world import make_heightmap, slope_degrees
     H = make_heightmap(preset, n=GRID)
     return H, slope_degrees(H)
 
-def sample_grid(field, x, y):
-    ix = int(round(x))
-    iy = int(round(y))
-    ix = min(max(ix, 0), GRID - 1)
-    iy = min(max(iy, 0), GRID - 1)
-    return field[iy, ix]
 
-def load_rows():
-    with open(CSV_PATH) as f:
+def load_rows(csv_path=CSV_PATH):
+    with open(csv_path) as f:
         return list(csv.DictReader(f))
+
 
 def partial_corr(x, y, controlling_for):
     """Partial correlation of x and y, controlling for z, via the standard
@@ -79,16 +91,113 @@ def partial_corr(x, y, controlling_for):
     y_resid = y - np.polyval(np.polyfit(z, y, 1), z)
     return stats.pearsonr(x_resid, y_resid)
 
-def main():
-    rows = load_rows()
+
+def _pearson_safe(x, y):
+    if len(x) < 3 or np.std(x) == 0 or np.std(y) == 0:
+        return float("nan"), float("nan")
+    r, p = stats.pearsonr(x, y)
+    return float(r), float(p)
+
+
+def _pointbiserial_safe(failed, slopes):
+    if len(failed) < 3 or np.std(failed) == 0 or np.std(slopes) == 0:
+        return float("nan"), float("nan")
+    r, p = stats.pointbiserialr(failed, slopes)
+    return float(r), float(p)
+
+
+def drift_quartile_bins(rows, H, slope_deg):
+    """Bin trials by |v_horizontal| quartile; report force/failure vs slope per bin.
+
+    Uses spawn slope (and touchdown slope when columns exist). Does not
+    mutate any published artifact.
+    """
+    v = np.hypot(
+        np.array([float(r["vx"]) for r in rows]),
+        np.array([float(r["vy"]) for r in rows]),
+    )
+    # Prefer drawn_vx when the low-drift control zeroed actual vx but kept draws.
+    if rows and "drawn_vx" in rows[0] and rows[0].get("drawn_vx") not in ("", None):
+        drawn = np.hypot(
+            np.array([float(r["drawn_vx"]) for r in rows]),
+            np.array([float(r["drawn_vy"]) for r in rows]),
+        )
+        # If actual velocities are all ~0 but draws are not, use draws for binning.
+        if float(np.max(v)) < 1e-9 and float(np.max(drawn)) > 0:
+            v = drawn
+
+    edges = np.percentile(v, [25, 50, 75])
+    idx = np.digitize(v, edges)
+    has_td = bool(rows) and row_has_touchdown(rows[0])
+    bins = []
+    for q in range(4):
+        mask = idx == q
+        q_rows = [r for r, m in zip(rows, mask, strict=True) if m]
+        if not q_rows:
+            bins.append({"quartile": q, "n": 0})
+            continue
+        v_q = v[mask]
+        lo, hi = float(v_q.min()), float(v_q.max())
+        safe = [r for r in q_rows if r["outcome"] == "landed" and r["tipped"] == "0"]
+        failed = np.array([
+            0.0 if r["outcome"] == "landed" and r["tipped"] == "0" else 1.0
+            for r in q_rows
+        ])
+        spawn_slopes_all = np.array([
+            sample_grid(slope_deg, float(r["x"]), float(r["y"])) for r in q_rows
+        ])
+        r_fail, p_fail = _pointbiserial_safe(failed, spawn_slopes_all)
+        entry = {
+            "quartile": q,
+            "n": len(q_rows),
+            "drift_min_mps": lo,
+            "drift_max_mps": hi,
+            "failure_rate_pct": float(100.0 * failed.mean()),
+            "corr_failed_spawn_slope_r": r_fail,
+            "corr_failed_spawn_slope_p": p_fail,
+        }
+        if len(safe) >= 5:
+            forces = np.array([float(r["peak_strut_force_N"]) for r in safe])
+            spawn_slopes = np.array([
+                sample_grid(slope_deg, float(r["x"]), float(r["y"])) for r in safe
+            ])
+            r_s, p_s = _pearson_safe(forces, spawn_slopes)
+            entry["n_landed"] = len(safe)
+            entry["corr_force_spawn_slope_r"] = r_s
+            entry["corr_force_spawn_slope_p"] = p_s
+            if has_td:
+                td_slopes = np.array([
+                    sample_grid(slope_deg, *touchdown_xy(r)) for r in safe
+                ])
+                r_t, p_t = _pearson_safe(forces, td_slopes)
+                entry["corr_force_touchdown_slope_r"] = r_t
+                entry["corr_force_touchdown_slope_p"] = p_t
+        else:
+            entry["n_landed"] = len(safe)
+        bins.append(entry)
+    return bins
+
+
+def run_validation(
+    rows,
+    preset="nominal",
+    stats_out_path=None,
+    merge_summary=True,
+    summary_path=None,
+):
+    """Run the full validation suite on already-loaded CSV rows.
+
+    Returns (exit_code, stats_dict). When merge_summary is False the
+    published / default summary_stats.json is left untouched.
+    """
     n_total = len(rows)
+    stats_path = Path(stats_out_path) if stats_out_path is not None else STATS_OUT_PATH
 
     print("=" * 70)
-    print(f"  VALIDATION REPORT  (n={n_total} trials)")
+    print(f"  VALIDATION REPORT  (n={n_total} trials, terrain preset={preset!r})")
     print("=" * 70)
 
-    # 4. Bottom-out assertion (checked first: everything downstream is
-    #    meaningless if the legs ran out of stroke)
+    # 4. Bottom-out assertion
     strokes = [float(r["peak_stroke_m"]) for r in rows]
     n_bottomed = sum(1 for s in strokes if s >= STROKE_LIMIT_M)
     print(f"\n[4] Bottom-out check: max stroke = {max(strokes):.4f} m "
@@ -103,7 +212,6 @@ def main():
         bottom_out_ok = True
 
     # 5. Failure breakdown
-    from collections import Counter
     outcome_counts = Counter(r["outcome"] for r in rows)
     reason_counts = Counter(r["fail_reason"] for r in rows if r["fail_reason"])
     failure_rate = 100 * sum(v for k, v in outcome_counts.items() if k != "landed") / n_total
@@ -111,7 +219,8 @@ def main():
     print(f"    Failure reasons: {dict(reason_counts)}")
     print(f"    Overall failure rate: {failure_rate:.1f}%")
 
-    H, slope_deg = load_terrain()
+    H, slope_deg = load_terrain(preset)
+    has_touchdown = bool(rows) and row_has_touchdown(rows[0])
 
     # Safe-landing data for site selection / signal tests
     safe_rows = [r for r in rows if r["outcome"] == "landed" and r["tipped"] == "0"]
@@ -123,14 +232,14 @@ def main():
         np.array([float(r["vy"]) for r in safe_rows]),
     )
 
-    slopes_at = np.array([sample_grid(slope_deg, x, y) for x, y in zip(xs, ys)])
-    elevs_at = np.array([sample_grid(H, x, y) for x, y in zip(xs, ys)])
+    slopes_at = np.array([sample_grid(slope_deg, x, y) for x, y in zip(xs, ys, strict=True)])
+    elevs_at = np.array([sample_grid(H, x, y) for x, y in zip(xs, ys, strict=True)])
 
-    # 1. Signal test
-    r_slope, p_slope = stats.pearsonr(forces, slopes_at)
-    r_elev, p_elev = stats.pearsonr(forces, elevs_at)
-    r_drift, p_drift = stats.pearsonr(forces, v_horiz)
-    print("\n[1] Signal test:")
+    # 1. Signal test (spawn — historical measurement)
+    r_slope, p_slope = _pearson_safe(forces, slopes_at)
+    r_elev, p_elev = _pearson_safe(forces, elevs_at)
+    r_drift, p_drift = _pearson_safe(forces, v_horiz)
+    print("\n[1] Signal test (terrain at spawn x,y — historical):")
     print(f"    corr(peak_strut_force, local_slope)      r={r_slope:+.4f}  p={p_slope:.4g}")
     print(f"    corr(peak_strut_force, elevation)         r={r_elev:+.4f}  p={p_elev:.4g}")
     print(f"    corr(peak_strut_force, |v_horizontal|)    r={r_drift:+.4f}  p={p_drift:.4g}"
@@ -147,10 +256,12 @@ def main():
               f"|corr(force, slope)|={abs(r_slope):.3f}.")
 
     # Partial correlation of force~slope controlling for |v_horizontal|.
-    # Run regardless of whether the raw correlation is flat: drift variance
-    # may be masking a real terrain effect that only shows up once removed.
-    r_partial, p_partial = partial_corr(forces, slopes_at, v_horiz)
-    print("\n[1a] Partial correlation (force ~ slope, controlling for |v_horizontal|):")
+    if len(forces) >= 3 and np.std(v_horiz) > 0:
+        r_partial, p_partial = partial_corr(forces, slopes_at, v_horiz)
+        r_partial, p_partial = float(r_partial), float(p_partial)
+    else:
+        r_partial, p_partial = float("nan"), float("nan")
+    print("\n[1a] Partial correlation (force ~ spawn slope, controlling for |v_horizontal|):")
     print(f"    r={r_partial:+.4f}  p={p_partial:.4g}")
     partial_signal_ok = abs(r_partial) >= SIGNAL_R_THRESHOLD and p_partial < 0.05
     if partial_signal_ok and not signal_ok:
@@ -163,14 +274,78 @@ def main():
         print("  (Raw signal test already passed; partial correlation is "
               "reported for completeness.)")
 
-    # 1b. Failure vs terrain, over ALL trials (not just safe landings)
+    # OPEN-1 measurement: terrain at touchdown / under feet
+    r_td_slope = p_td_slope = float("nan")
+    r_td_partial = p_td_partial = float("nan")
+    r_feet_slope = p_feet_slope = float("nan")
+    r_feet_rough = p_feet_rough = float("nan")
+    r_td_elev = p_td_elev = float("nan")
+    r_td_rough = p_td_rough = float("nan")
+    mean_spawn_td_offset = float("nan")
+    touchdown_signal_ok = False
+    feet_signal_ok = False
+    feet_rough_signal_ok = False
+    touchdown_rough_signal_ok = False
+
+    if has_touchdown and len(safe_rows) >= 3:
+        td_xy = [touchdown_xy(r) for r in safe_rows]
+        td_slopes = np.array([sample_grid(slope_deg, x, y) for x, y in td_xy])
+        td_elevs = np.array([sample_grid(H, x, y) for x, y in td_xy])
+        td_rough = np.array([local_roughness(H, x, y) for x, y in td_xy])
+        feet_mean_slopes = []
+        feet_rough = []
+        for r in safe_rows:
+            ft = feet_terrain(H, slope_deg, foot_xy_from_row(r))
+            feet_mean_slopes.append(ft["mean_slope_deg"])
+            feet_rough.append(ft["plane_residual_rms_m"])
+        feet_mean_slopes = np.array(feet_mean_slopes)
+        feet_rough = np.array(feet_rough)
+
+        offsets = np.array([spawn_touchdown_offset_m(r) for r in safe_rows])
+        mean_spawn_td_offset = float(np.nanmean(offsets))
+
+        r_td_slope, p_td_slope = _pearson_safe(forces, td_slopes)
+        r_td_elev, p_td_elev = _pearson_safe(forces, td_elevs)
+        r_td_rough, p_td_rough = _pearson_safe(forces, td_rough)
+        r_feet_slope, p_feet_slope = _pearson_safe(forces, feet_mean_slopes)
+        r_feet_rough, p_feet_rough = _pearson_safe(forces, feet_rough)
+
+        if np.std(v_horiz) > 0:
+            r_td_partial, p_td_partial = partial_corr(forces, td_slopes, v_horiz)
+            r_td_partial, p_td_partial = float(r_td_partial), float(p_td_partial)
+
+        touchdown_signal_ok = abs(r_td_slope) >= SIGNAL_R_THRESHOLD and p_td_slope < 0.05
+        feet_signal_ok = abs(r_feet_slope) >= SIGNAL_R_THRESHOLD and p_feet_slope < 0.05
+        feet_rough_signal_ok = abs(r_feet_rough) >= SIGNAL_R_THRESHOLD and p_feet_rough < 0.05
+        touchdown_rough_signal_ok = abs(r_td_rough) >= SIGNAL_R_THRESHOLD and p_td_rough < 0.05
+
+        print("\n[1c] OPEN-1 measurement (terrain at touchdown / under feet):")
+        print(f"    mean |spawn - touchdown| horizontal offset: {mean_spawn_td_offset:.2f} m")
+        print(f"    corr(force, touchdown_slope)              r={r_td_slope:+.4f}  p={p_td_slope:.4g}")
+        print(f"    corr(force, touchdown_elevation)          r={r_td_elev:+.4f}  p={p_td_elev:.4g}")
+        print(f"    corr(force, touchdown_local_roughness)    r={r_td_rough:+.4f}  p={p_td_rough:.4g}")
+        print(f"    corr(force, mean_feet_slope)              r={r_feet_slope:+.4f}  p={p_feet_slope:.4g}")
+        print(f"    corr(force, feet_plane_residual_rms)      r={r_feet_rough:+.4f}  p={p_feet_rough:.4g}")
+        print(f"    partial(force ~ touchdown_slope | drift)  r={r_td_partial:+.4f}  p={p_td_partial:.4g}")
+        if (touchdown_signal_ok or feet_signal_ok or feet_rough_signal_ok
+                or touchdown_rough_signal_ok):
+            print("  PASS: at least one contact-site terrain metric hits "
+                  f"|r| >= {SIGNAL_R_THRESHOLD} with p < 0.05.")
+        else:
+            print("  No contact-site terrain metric hits the |r| = 0.2 bar.")
+    elif not has_touchdown:
+        print("\n[1c] OPEN-1 measurement: SKIPPED (CSV has no touchdown_x/y columns).")
+
+    # 1b. Failure vs terrain, over ALL trials
     all_xs = np.array([float(r["x"]) for r in rows])
     all_ys = np.array([float(r["y"]) for r in rows])
-    all_slopes = np.array([sample_grid(slope_deg, x, y) for x, y in zip(all_xs, all_ys)])
+    all_slopes = np.array([
+        sample_grid(slope_deg, x, y) for x, y in zip(all_xs, all_ys, strict=True)
+    ])
     failed = np.array([0.0 if r["outcome"] == "landed" and r["tipped"] == "0" else 1.0
                         for r in rows])
-    r_pb, p_pb = stats.pointbiserialr(failed, all_slopes)
-    print("\n[1b] Failure vs terrain (all trials):")
+    r_pb, p_pb = _pointbiserial_safe(failed, all_slopes)
+    print("\n[1b] Failure vs terrain (all trials, spawn slope):")
     print(f"    corr(failed, local_slope)  r={r_pb:+.4f}  p={p_pb:.4g}")
 
     quartile_edges = np.percentile(all_slopes, [25, 50, 75])
@@ -194,10 +369,57 @@ def main():
         print("  PASS: failure rate carries a statistically significant "
               "relationship with local terrain slope.")
 
+    r_pb_td = p_pb_td = float("nan")
+    failure_touchdown_signal_ok = False
+    if has_touchdown:
+        all_td_slopes = np.array([
+            sample_grid(slope_deg, *touchdown_xy(r)) for r in rows
+        ])
+        r_pb_td, p_pb_td = _pointbiserial_safe(failed, all_td_slopes)
+        failure_touchdown_signal_ok = abs(r_pb_td) >= SIGNAL_R_THRESHOLD and p_pb_td < 0.05
+        print("\n[1b+] Failure vs touchdown slope:")
+        print(f"    corr(failed, touchdown_slope)  r={r_pb_td:+.4f}  p={p_pb_td:.4g}")
+
+    # Drift-quartile bins (OPEN-1 control analysis helper)
+    drift_bins = drift_quartile_bins(rows, H, slope_deg)
+    print("\n[1d] Drift-quartile bins (spawn slope unless noted):")
+    for b in drift_bins:
+        if b["n"] == 0:
+            continue
+        line = (f"    Q{b['quartile']+1} drift {b['drift_min_mps']:.2f}-"
+                f"{b['drift_max_mps']:.2f} m/s (n={b['n']}): "
+                f"fail {b['failure_rate_pct']:.1f}%")
+        if "corr_force_spawn_slope_r" in b and not math.isnan(b["corr_force_spawn_slope_r"]):
+            line += (f", corr(force,spawn_slope)="
+                     f"{b['corr_force_spawn_slope_r']:+.3f}")
+        if "corr_force_touchdown_slope_r" in b and not math.isnan(
+                b["corr_force_touchdown_slope_r"]):
+            line += (f", corr(force,td_slope)="
+                     f"{b['corr_force_touchdown_slope_r']:+.3f}")
+        print(line)
+
+    # OPEN-1 overall: any documented terrain/controller condition hits the bar
+    open1_conditions = {
+        "spawn_force_slope": signal_ok,
+        "spawn_partial_force_slope": partial_signal_ok,
+        "spawn_failed_slope": failure_terrain_signal_ok,
+        "touchdown_force_slope": touchdown_signal_ok,
+        "touchdown_local_roughness": touchdown_rough_signal_ok,
+        "feet_mean_slope": feet_signal_ok,
+        "feet_roughness": feet_rough_signal_ok,
+        "touchdown_failed_slope": failure_touchdown_signal_ok,
+        "touchdown_partial_force_slope": (
+            abs(r_td_partial) >= SIGNAL_R_THRESHOLD and p_td_partial < 0.05
+            if not math.isnan(r_td_partial) else False
+        ),
+    }
+    open1_signal_ok = any(open1_conditions.values())
+    print("\n[1e] OPEN-1 |r| >= 0.2 criterion across documented conditions:")
+    for name, ok in open1_conditions.items():
+        print(f"    {name}: {'HIT' if ok else 'miss'}")
+    print(f"  OPEN-1 aggregate: {'HIT' if open1_signal_ok else 'NULL (no condition met)'}")
+
     # 2. Density-confound test
-    # Only meaningful once [1] finds a real signal: otherwise this compares
-    # two maps that are both noise, and a large distance between them proves
-    # nothing about either one being meaningful.
     real_x, real_y = recommended_site(xs, ys, forces)
     const_x, const_y = recommended_site(xs, ys, np.ones_like(forces))
     if real_x is None or const_x is None:
@@ -236,12 +458,13 @@ def main():
     rng = np.random.default_rng(42)
     n = len(xs)
     boot_x, boot_y = [], []
-    for _ in range(1000):
-        idx = rng.integers(0, n, n)
-        bx, by = recommended_site(xs[idx], ys[idx], forces[idx])
-        if bx is not None:
-            boot_x.append(bx)
-            boot_y.append(by)
+    if n >= 1:
+        for _ in range(1000):
+            idx = rng.integers(0, n, n)
+            bx, by = recommended_site(xs[idx], ys[idx], forces[idx])
+            if bx is not None:
+                boot_x.append(bx)
+                boot_y.append(by)
     boot_x = np.array(boot_x)
     boot_y = np.array(boot_y)
     if len(boot_x) < 50:
@@ -265,7 +488,7 @@ def main():
         else:
             print("  PASS: recommended site is reasonably stable under resampling.")
 
-    # Overall verdict
+    # Overall verdict (historical: spawn signal + confound + bootstrap + bottom-out)
     overall_ok = bottom_out_ok and signal_ok and confound_ok and bootstrap_ok
     print("\n" + "=" * 70)
     print(f"  OVERALL: {'PASS' if overall_ok else 'FAIL / NOT MEANINGFUL'}")
@@ -273,11 +496,13 @@ def main():
 
     out = dict(
         n_total=n_total,
+        terrain_preset=preset,
         outcome_counts=dict(outcome_counts),
         fail_reason_counts=dict(reason_counts),
         failure_rate_pct=failure_rate,
         n_bottomed_out=n_bottomed,
         bottom_out_ok=bottom_out_ok,
+        stroke_max_m=float(max(strokes)),
         corr_force_slope_r=float(r_slope),
         corr_force_slope_p=float(p_slope),
         corr_force_elevation_r=float(r_elev),
@@ -292,6 +517,31 @@ def main():
         failure_rate_by_slope_quartile_pct=quartile_failure_rates,
         failure_terrain_signal_ok=bool(failure_terrain_signal_ok),
         signal_ok=bool(signal_ok),
+        signal_r_threshold=SIGNAL_R_THRESHOLD,
+        has_touchdown_columns=has_touchdown,
+        mean_spawn_touchdown_offset_m=mean_spawn_td_offset,
+        corr_force_touchdown_slope_r=float(r_td_slope),
+        corr_force_touchdown_slope_p=float(p_td_slope),
+        corr_force_touchdown_elevation_r=float(r_td_elev),
+        corr_force_touchdown_elevation_p=float(p_td_elev),
+        corr_force_touchdown_local_roughness_r=float(r_td_rough),
+        corr_force_touchdown_local_roughness_p=float(p_td_rough),
+        partial_corr_force_touchdown_slope_given_drift_r=float(r_td_partial),
+        partial_corr_force_touchdown_slope_given_drift_p=float(p_td_partial),
+        corr_force_feet_mean_slope_r=float(r_feet_slope),
+        corr_force_feet_mean_slope_p=float(p_feet_slope),
+        corr_force_feet_plane_residual_r=float(r_feet_rough),
+        corr_force_feet_plane_residual_p=float(p_feet_rough),
+        touchdown_signal_ok=bool(touchdown_signal_ok),
+        touchdown_rough_signal_ok=bool(touchdown_rough_signal_ok),
+        feet_signal_ok=bool(feet_signal_ok),
+        feet_rough_signal_ok=bool(feet_rough_signal_ok),
+        corr_failed_touchdown_slope_r=float(r_pb_td),
+        corr_failed_touchdown_slope_p=float(p_pb_td),
+        failure_touchdown_signal_ok=bool(failure_touchdown_signal_ok),
+        open1_conditions=open1_conditions,
+        open1_signal_ok=bool(open1_signal_ok),
+        drift_quartile_bins=drift_bins,
         recommended_site_x=float(real_x) if real_x is not None else None,
         recommended_site_y=float(real_y) if real_y is not None else None,
         density_confound_distance_m=confound_dist,
@@ -300,39 +550,74 @@ def main():
         bootstrap_spread_95pct_m=bootstrap_spread,
         bootstrap_ok=bootstrap_ok,
         overall_ok=bool(overall_ok),
+        adjacent_foot_spacing_m=4.0,
     )
-    with open(STATS_OUT_PATH, "w") as f:
+    stats_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(stats_path, "w") as f:
         json.dump(out, f, indent=2)
-    print(f"\nSaved: {STATS_OUT_PATH}")
+    print(f"\nSaved: {stats_path}")
 
-    from lunar_lander.summary_stats import merge_summary_stats
-    merge_summary_stats(dict(
-        corr_force_slope_r=out["corr_force_slope_r"],
-        corr_force_slope_p=out["corr_force_slope_p"],
-        corr_force_elevation_r=out["corr_force_elevation_r"],
-        corr_force_elevation_p=out["corr_force_elevation_p"],
-        corr_force_drift_r=out["corr_force_drift_r"],
-        corr_force_drift_p=out["corr_force_drift_p"],
-        partial_corr_force_slope_given_drift_r=out["partial_corr_force_slope_given_drift_r"],
-        partial_corr_force_slope_given_drift_p=out["partial_corr_force_slope_given_drift_p"],
-        partial_signal_ok=out["partial_signal_ok"],
-        corr_failed_slope_r=out["corr_failed_slope_r"],
-        corr_failed_slope_p=out["corr_failed_slope_p"],
-        failure_rate_by_slope_quartile_pct=out["failure_rate_by_slope_quartile_pct"],
-        failure_terrain_signal_ok=out["failure_terrain_signal_ok"],
-        signal_ok=out["signal_ok"],
-        density_confound_distance_m=out["density_confound_distance_m"],
-        density_confound_ok=out["density_confound_ok"],
-        density_confound_verdict=out["density_confound_verdict"],
-        bootstrap_spread_95pct_m=out["bootstrap_spread_95pct_m"],
-        bootstrap_ok=out["bootstrap_ok"],
-        n_bottomed_out=out["n_bottomed_out"],
-        bottom_out_ok=out["bottom_out_ok"],
-        validation_overall_ok=out["overall_ok"],
-    ))
-    print("Merged into summary_stats.json")
+    if merge_summary:
+        from lunar_lander.summary_stats import merge_summary_stats
+        merge_kwargs = dict(
+            corr_force_slope_r=out["corr_force_slope_r"],
+            corr_force_slope_p=out["corr_force_slope_p"],
+            corr_force_elevation_r=out["corr_force_elevation_r"],
+            corr_force_elevation_p=out["corr_force_elevation_p"],
+            corr_force_drift_r=out["corr_force_drift_r"],
+            corr_force_drift_p=out["corr_force_drift_p"],
+            partial_corr_force_slope_given_drift_r=out["partial_corr_force_slope_given_drift_r"],
+            partial_corr_force_slope_given_drift_p=out["partial_corr_force_slope_given_drift_p"],
+            partial_signal_ok=out["partial_signal_ok"],
+            corr_failed_slope_r=out["corr_failed_slope_r"],
+            corr_failed_slope_p=out["corr_failed_slope_p"],
+            failure_rate_by_slope_quartile_pct=out["failure_rate_by_slope_quartile_pct"],
+            failure_terrain_signal_ok=out["failure_terrain_signal_ok"],
+            signal_ok=out["signal_ok"],
+            density_confound_distance_m=out["density_confound_distance_m"],
+            density_confound_ok=out["density_confound_ok"],
+            density_confound_verdict=out["density_confound_verdict"],
+            bootstrap_spread_95pct_m=out["bootstrap_spread_95pct_m"],
+            bootstrap_ok=out["bootstrap_ok"],
+            n_bottomed_out=out["n_bottomed_out"],
+            bottom_out_ok=out["bottom_out_ok"],
+            validation_overall_ok=out["overall_ok"],
+        )
+        if summary_path is not None:
+            merge_summary_stats(merge_kwargs, path=Path(summary_path))
+            print(f"Merged into {summary_path}")
+        else:
+            merge_summary_stats(merge_kwargs)
+            print("Merged into summary_stats.json")
 
-    return 0 if overall_ok else 1
+    return (0 if overall_ok else 1), out
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Validate Monte Carlo landing results")
+    parser.add_argument("--csv", type=Path, default=None,
+                        help="results CSV (default: paths.RESULTS_CSV)")
+    parser.add_argument("--preset", default="nominal", choices=("nominal", "harsh"),
+                        help="heightmap preset the campaign used (default: nominal)")
+    parser.add_argument("--stats-out", type=Path, default=None,
+                        help="validation_stats.json path")
+    parser.add_argument("--summary-out", type=Path, default=None,
+                        help="optional summary_stats.json merge target")
+    parser.add_argument("--no-merge-summary", action="store_true",
+                        help="do not write summary_stats.json (keeps published docs safe)")
+    args = parser.parse_args(argv)
+
+    csv_path = args.csv if args.csv is not None else CSV_PATH
+    rows = load_rows(csv_path)
+    code, _ = run_validation(
+        rows,
+        preset=args.preset,
+        stats_out_path=args.stats_out,
+        merge_summary=not args.no_merge_summary,
+        summary_path=args.summary_out,
+    )
+    return code
+
 
 if __name__ == "__main__":
     sys.exit(main())

@@ -26,7 +26,14 @@ def _output_root() -> Path:
 
 OUTPUT_DIR = _output_root()
 MESH_DIR = OUTPUT_DIR / "physics_mesh"
-FIGURES_DIR = PROJECT_ROOT / "figures"
+# Default published pipeline writes under project-root figures/. When
+# LUNAR_OUTPUT_DIR is set, keep figures inside that tree so experimental
+# campaigns cannot overwrite figures/optimal_landing_zones.png.
+FIGURES_DIR = (
+    OUTPUT_DIR / "figures"
+    if os.environ.get("LUNAR_OUTPUT_DIR")
+    else PROJECT_ROOT / "figures"
+)
 
 for _d in (MESH_DIR, FIGURES_DIR):
     _d.mkdir(parents=True, exist_ok=True)

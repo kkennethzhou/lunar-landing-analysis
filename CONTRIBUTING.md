@@ -6,7 +6,7 @@ Issues and pull requests are welcome. Use GitHub issues for bugs, questions, and
 
 The mesh-collision bug is the shape of thing worth reporting. MuJoCo evaluates `type="mesh"` contact on the convex hull, so an earlier lander was touching a dome while the render still showed craters. Nothing raised. A bug like that is more useful than a new feature.
 
-The safety map still has no terrain signal. See OPEN-1 in [docs/known-issues.md](docs/known-issues.md). On the 500-trial run, `corr(force, slope) = +0.025` and the partial correlation controlling for drift is `+0.005`. `python -m lunar_lander.compare_roughness` is the rougher-terrain probe. A short probe is not a replacement for the 500-trial result.
+The safety map still has no terrain signal. See OPEN-1 in [docs/known-issues.md](docs/known-issues.md) and the approved experiment in [docs/open1_experiment.md](docs/open1_experiment.md). Do not change the `|r| = 0.2` bar or retune the legs/controller to make the check green. Put experimental campaign outputs under an isolated directory; never overwrite published `docs/summary_stats.json` or `figures/optimal_landing_zones.png`.
 
 ## Rules
 
