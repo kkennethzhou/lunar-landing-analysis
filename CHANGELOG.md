@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- OPEN-1 experiment scaffolding for issue #3: touchdown and foot-position
+  logging, validator support for the harsh heightmap and contact-site
+  terrain metrics, low-drift control (`--zero-drift`), and
+  `python -m lunar_lander.open1_campaigns` writing only under an isolated
+  output directory. See `docs/open1_experiment.md`. Adjacent feet are 4.0 m
+  apart. Published `docs/summary_stats.json` and
+  `figures/optimal_landing_zones.png` are not overwritten by these runs.
+
 ## 0.4.0 (2026-11-27)
 
 - Landing-leg slides use axis `0 0 1`. Positive q compresses the leg, so the spring holds the bus at rest.

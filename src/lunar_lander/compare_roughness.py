@@ -1,8 +1,9 @@
 """Compare the nominal terrain with a harsher preset on the same lander and seed.
 
-This is the probe named in docs/known-issues.md OPEN-1: the nominal relief
-may be too gentle for a ~2.5 m leg span to notice. It is a separate campaign
-from the 500-trial result. It does not replace that result.
+This is the short probe named in docs/known-issues.md OPEN-1. Adjacent feet
+are 4.0 m apart; the older ~2.5 m figure was wrong. Prefer
+`python -m lunar_lander.open1_campaigns` for the full 500-trial harsh
+campaign on the compression-leg model. This module does not replace that.
 """
 
 from __future__ import annotations

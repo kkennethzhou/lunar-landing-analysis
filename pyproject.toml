@@ -37,6 +37,7 @@ lunar-plot     = "lunar_lander.plot_landing_zones:main"
 lunar-validate = "lunar_lander.validate_results:main"
 lunar-convex-gap = "lunar_lander.convex_gap:main"
 lunar-roughness = "lunar_lander.compare_roughness:main"
+lunar-open1 = "lunar_lander.open1_campaigns:main"
 
 [project.urls]
 Homepage = "https://github.com/kkennethzhou/lunar-landing-analysis"

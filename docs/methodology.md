@@ -95,7 +95,9 @@ A landing counts if at least 3 footpads stay in contact above 1 N for 150 consec
 
 From `docs/summary_stats.json`, the same file the pipeline writes to `output/summary_stats.json`: 405 landed, 91 tipped, 4 timeouts (19.0% not landed). Peak stroke 0.797 m. No trial exceeded the acceleration limit.
 
-`python -m lunar_lander.compare_roughness` reruns a shorter campaign on a deeper crater field and writes `docs/roughness_comparison.json`. It does not replace the 500-trial result.
+`python -m lunar_lander.compare_roughness` reruns a shorter campaign on a deeper crater field and writes `docs/roughness_comparison.json`. It does not replace the 500-trial result. The approved OPEN-1 follow-up (touchdown logging, 500-trial harsh campaign, low-drift control) is `python -m lunar_lander.open1_campaigns`; methods are in [open1_experiment.md](open1_experiment.md).
+
+Adjacent feet are 4.0 m apart in the MJCF.
 
 ## 7. Site selection
 

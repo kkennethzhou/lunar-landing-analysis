@@ -35,9 +35,11 @@ Three follow-ups were listed before this release:
 
 1. Partial correlation of force against slope, controlling for `|v|`. Tested on the compression-leg campaign. r=+0.041, p=0.41. Flatter than the raw correlation.
 2. Fix the leg stiffness, the slide axis, and the thrust cutoff so the legs carry the vehicle. Done. See below. Peak strut force on the 500-trial run is 6.0-23.4 kN (mean 13.2 kN). Maximum stroke is 0.797 m. No leg bottomed out. The slope correlation is still absent.
-3. Rougher terrain. A 2.5 m leg span may not see this heightfield. `python -m lunar_lander.compare_roughness` rebuilds the lander on a harsher grid (crater depths times 3, medium ridges times 2) and repeats a shorter seeded campaign.
+3. Rougher terrain and measurement at contact. Adjacent feet are 4.0 m apart (not 2.5 m). The published CSV `x,y` are spawn coordinates, not touchdown; with drift up to 2.3 m/s the lander can be tens of metres away at contact. The approved OPEN-1 experiment logs touchdown and foot positions, runs a 500-trial harsh campaign on the compression-leg model, and a low-drift control. See [open1_experiment.md](open1_experiment.md). `python -m lunar_lander.open1_campaigns` writes only under an isolated output directory.
 
-The committed probe (`docs/roughness_comparison.json`, 40 trials, seed 42) raises relief from 4.44 m to 8.77 m and the failure rate from 12.5% to 37.5%. Force-slope correlation on the harsher grid is r=0.039, p=0.85. On the nominal preset at the same sample size it is r=0.188, p=0.28. That file does not replace the 500-trial result.
+The committed 40-trial probe (`docs/roughness_comparison.json`, seed 42) is from before the 0.4.0 compression-leg campaign (max stroke 0.14–0.16 m versus 0.797 m on v0.4.0). It raises relief from 4.44 m to 8.77 m and the failure rate from 12.5% to 37.5%. Force-slope correlation on the harsher grid is r=0.039, p=0.85. That file does not replace the 500-trial result and is stale relative to the current lander.
+
+OPEN-1 experiment results (500 trials, seed 42) are in [open1_experiment.md](open1_experiment.md) and `docs/open1/`. Peak force still does not track slope at `|r| ≥ 0.2`. Measuring failure at touchdown instead of spawn on the same nominal campaign yields `r=+0.268`. Leave this issue open until peak load meets the bar.
 
 ## MINOR-2. Whole-domain tilt quoted as a slope
 

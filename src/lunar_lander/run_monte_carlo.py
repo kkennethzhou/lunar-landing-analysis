@@ -9,7 +9,9 @@ Each trial:
   - Physics stepped until landed (stable), tipped, over-force, over-stroke,
     over-g, or timed out
   - Logs: trial, x, y, vx, vy, strut force (physical) + contact force
-    (raw, for comparison), peak stroke, peak accel, outcome, failure reason
+    (raw, for comparison), peak stroke, peak accel, outcome, failure reason,
+    plus touchdown body/foot positions (OPEN-1 measurement fix: spawn x,y
+    are not contact coordinates)
 """
 
 import csv
@@ -20,6 +22,10 @@ import numpy as np
 
 from lunar_lander.paths import RESULTS_CSV as CSV_PATH
 from lunar_lander.paths import XML_PATH
+
+# Adjacent feet sit 4.0 m apart in the MJCF (upper attachment ±1.1 m plus
+# strut tip ±0.9 m). Older docs called this ~2.5 m; that was wrong.
+ADJACENT_FOOT_SPACING_M = 4.0
 
 N_TRIALS     = 500
 MAX_STEPS    = 12000       # 12000 x 0.002 s = 24 s max per trial
@@ -303,6 +309,26 @@ def run_trial(model, data, x, y, vx, vy,
     steps_since_touchdown = None
     contact_forces = get_contact_forces(model, data)
 
+    # OPEN-1: spawn (x, y) is not the contact site. With no horizontal
+    # thruster, drift up to VEL_RANGE over a ~10 s descent can put the
+    # vehicle tens of metres away. Capture body + foot XY at first
+    # contact (>=1 foot > 1 N); fall back to final pose if never contacted.
+    touchdown_logged = False
+    touchdown_x = float(data.qpos[0])
+    touchdown_y = float(data.qpos[1])
+    foot_xy = {n: (float(data.geom_xpos[gid][0]), float(data.geom_xpos[gid][1]))
+               for n, gid in foot_geom_ids.items()}
+
+    def _capture_touchdown_pose():
+        nonlocal touchdown_x, touchdown_y, foot_xy, touchdown_logged
+        touchdown_x = float(data.qpos[0])
+        touchdown_y = float(data.qpos[1])
+        foot_xy = {
+            n: (float(data.geom_xpos[gid][0]), float(data.geom_xpos[gid][1]))
+            for n, gid in foot_geom_ids.items()
+        }
+        touchdown_logged = True
+
     step = 0
     for step in range(MAX_STEPS):  # noqa: B007  read after the loop as the step count
         # AGL (body height above local terrain) for crash detection.
@@ -338,6 +364,9 @@ def run_trial(model, data, x, y, vx, vy,
         contact_forces = get_contact_forces(model, data)
         strut_forces = get_strut_forces(model, data, dof_adrs)
         strokes = get_strokes(data, qpos_adrs)
+
+        if not touchdown_logged and any(f > 1.0 for f in contact_forces.values()):
+            _capture_touchdown_pose()
 
         for n in LEG_JOINTS:
             if strut_forces[n] > max_strut_force[n]:
@@ -405,6 +434,9 @@ def run_trial(model, data, x, y, vx, vy,
             fail_reason = ""
             break
 
+    if not touchdown_logged:
+        _capture_touchdown_pose()
+
     peak_strut = max(max_strut_force.values())
     peak_contact = max(max_contact_force.values())
     peak_stroke = max(max_stroke.values())
@@ -418,16 +450,31 @@ def run_trial(model, data, x, y, vx, vy,
         outcome=outcome,
         fail_reason=fail_reason,
         steps=step + 1,
+        touchdown_x=touchdown_x,
+        touchdown_y=touchdown_y,
+        foot1_x=foot_xy["foot1"][0],
+        foot1_y=foot_xy["foot1"][1],
+        foot2_x=foot_xy["foot2"][0],
+        foot2_y=foot_xy["foot2"][1],
+        foot3_x=foot_xy["foot3"][0],
+        foot3_y=foot_xy["foot3"][1],
+        foot4_x=foot_xy["foot4"][0],
+        foot4_y=foot_xy["foot4"][1],
     )
 
 # Main
 
 def run_campaign(model, n_trials=N_TRIALS, seed=42, csv_path=CSV_PATH,
-                 progress=True, record_summary=True):
+                 progress=True, record_summary=True,
+                 zero_horizontal_velocity=False):
     """Run the seeded descent Monte Carlo and return one dict per trial.
 
     The draw order matches the historical seed-42 campaign: positions, then
     horizontal velocity, tilt, spin, friction, and the touchdown target.
+
+    If zero_horizontal_velocity is True, vx/vy are still drawn (so later RNG
+    draws keep the same spawn points as the published campaign) and then
+    overwritten to 0 before each trial runs.
     """
     rng = np.random.default_rng(seed)
     data = mujoco.MjData(model)
@@ -441,7 +488,11 @@ def run_campaign(model, n_trials=N_TRIALS, seed=42, csv_path=CSV_PATH,
                   # legacy column name kept for any downstream script that
                   # still reads max_leg_force_N: now maps to the physical
                   # strut force, not the old solver-spike contact force.
-                  "max_leg_force_N"]
+                  "max_leg_force_N",
+                  "touchdown_x", "touchdown_y",
+                  "foot1_x", "foot1_y", "foot2_x", "foot2_y",
+                  "foot3_x", "foot3_y", "foot4_x", "foot4_y",
+                  "drawn_vx", "drawn_vy"]
 
     xs  = rng.uniform(SPAWN_MIN, SPAWN_MAX, trial_count)
     ys  = rng.uniform(SPAWN_MIN, SPAWN_MAX, trial_count)
@@ -456,6 +507,14 @@ def run_campaign(model, n_trials=N_TRIALS, seed=42, csv_path=CSV_PATH,
     wzs = rng.uniform(-INIT_ANGVEL_MAX_RADPS, INIT_ANGVEL_MAX_RADPS, trial_count)
     friction_scales = rng.uniform(FRICTION_SCALE_MIN, FRICTION_SCALE_MAX, trial_count)
     touchdown_targets = rng.uniform(TOUCHDOWN_VZ_MIN, TOUCHDOWN_VZ_MAX, trial_count)
+
+    # OPEN-1 low-drift control: zero AFTER the seeded draws so spawn x,y
+    # (and every later draw) still match the published seed-42 campaign.
+    drawn_vxs = np.array(vxs, copy=True)
+    drawn_vys = np.array(vys, copy=True)
+    if zero_horizontal_velocity:
+        vxs = np.zeros(trial_count)
+        vys = np.zeros(trial_count)
 
     outcomes_count = {"landed": 0, "tipped": 0, "crashed": 0, "failed": 0, "timeout": 0}
     fail_reason_count = {}
@@ -484,6 +543,13 @@ def run_campaign(model, n_trials=N_TRIALS, seed=42, csv_path=CSV_PATH,
                 "peak_stroke_m": float(r["peak_stroke_m"]),
                 "outcome": r["outcome"],
                 "fail_reason": r["fail_reason"],
+                "touchdown_x": float(r["touchdown_x"]),
+                "touchdown_y": float(r["touchdown_y"]),
+                "foot1_x": float(r["foot1_x"]), "foot1_y": float(r["foot1_y"]),
+                "foot2_x": float(r["foot2_x"]), "foot2_y": float(r["foot2_y"]),
+                "foot3_x": float(r["foot3_x"]), "foot3_y": float(r["foot3_y"]),
+                "foot4_x": float(r["foot4_x"]), "foot4_y": float(r["foot4_y"]),
+                "drawn_vx": float(drawn_vxs[i]), "drawn_vy": float(drawn_vys[i]),
             }
             records.append(record)
             writer.writerow({
@@ -501,6 +567,14 @@ def run_campaign(model, n_trials=N_TRIALS, seed=42, csv_path=CSV_PATH,
                 "fail_reason": r["fail_reason"],
                 "steps":     r["steps"],
                 "max_leg_force_N": f"{r['peak_strut_force_N']:.1f}",
+                "touchdown_x": f"{r['touchdown_x']:.2f}",
+                "touchdown_y": f"{r['touchdown_y']:.2f}",
+                "foot1_x": f"{r['foot1_x']:.2f}", "foot1_y": f"{r['foot1_y']:.2f}",
+                "foot2_x": f"{r['foot2_x']:.2f}", "foot2_y": f"{r['foot2_y']:.2f}",
+                "foot3_x": f"{r['foot3_x']:.2f}", "foot3_y": f"{r['foot3_y']:.2f}",
+                "foot4_x": f"{r['foot4_x']:.2f}", "foot4_y": f"{r['foot4_y']:.2f}",
+                "drawn_vx": f"{drawn_vxs[i]:.3f}",
+                "drawn_vy": f"{drawn_vys[i]:.3f}",
             })
             csvfile.flush()
 
@@ -576,13 +650,36 @@ def run_campaign(model, n_trials=N_TRIALS, seed=42, csv_path=CSV_PATH,
 
 def main(argv=None):
     import argparse
+    from pathlib import Path
+
     parser = argparse.ArgumentParser(description="Monte Carlo lunar landing trials")
     parser.add_argument("--trials", type=int, default=N_TRIALS,
                         help="number of trials to run (default: %(default)s)")
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--csv", type=Path, default=None,
+                        help="results CSV path (default: paths.RESULTS_CSV)")
+    parser.add_argument("--xml", type=Path, default=None,
+                        help="MJCF path (default: paths.XML_PATH)")
+    parser.add_argument(
+        "--zero-drift",
+        action="store_true",
+        help="draw horizontal velocities then overwrite vx=vy=0 (OPEN-1 control)",
+    )
+    parser.add_argument("--no-summary", action="store_true",
+                        help="do not merge into summary_stats.json")
     args = parser.parse_args(argv)
-    print(f"Loading model: {XML_PATH}")
-    model = mujoco.MjModel.from_xml_path(str(XML_PATH))
-    return run_campaign(model, n_trials=args.trials)
+    xml_path = args.xml if args.xml is not None else XML_PATH
+    csv_path = args.csv if args.csv is not None else CSV_PATH
+    print(f"Loading model: {xml_path}")
+    model = mujoco.MjModel.from_xml_path(str(xml_path))
+    return run_campaign(
+        model,
+        n_trials=args.trials,
+        seed=args.seed,
+        csv_path=csv_path,
+        record_summary=not args.no_summary,
+        zero_horizontal_velocity=args.zero_drift,
+    )
 
 if __name__ == "__main__":
     main()
